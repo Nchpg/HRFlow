@@ -236,7 +236,6 @@ export default function CreateJobModal({ onClose, onSuccess }) {
       <div style={s.modal} onClick={(e) => e.stopPropagation()}>
 
         <div style={s.header}>
-          <span style={{ fontSize: 18 }}>💼</span>
           <div style={s.title}>Create a job</div>
           <button style={s.close} onClick={onClose}>✕</button>
         </div>

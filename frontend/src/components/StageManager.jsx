@@ -237,7 +237,7 @@ export default function StageManager({ job, onClose, onStatusChange }) {
                   style={s.statusOption(jobStatus === status)} 
                   onClick={() => handleStatusUpdate(status)}
                 >
-                  {status.replace('_', ' ')}
+                  {status.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}
                 </div>
               ))}
             </div>

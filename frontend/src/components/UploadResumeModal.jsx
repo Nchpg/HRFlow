@@ -105,7 +105,6 @@ export default function UploadResumeModal({ job, onClose, onSuccess }) {
     <div style={s.overlay} onClick={onClose}>
       <div style={s.modal} onClick={(e) => e.stopPropagation()}>
         <div style={s.header}>
-          <span style={{ fontSize: 18 }}>📎</span>
           <div style={s.title}>Add candidate via resume</div>
           <button style={s.close} onClick={onClose}>✕</button>
         </div>

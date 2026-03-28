@@ -25,6 +25,7 @@ export default function DashboardPage() {
   // processingProfiles: { [profileKey]: statusLabel } — shared across panel + list
   const [processingProfiles, setProcessingProfiles] = useState({})
   const [candidateRefreshKey, setCandidateRefreshKey] = useState(0)
+  const [candidateOverride, setCandidateOverride] = useState(null)
 
   function handleJobStatusChange(jobKey, status) {
     setJobs((prev) => prev.map((j) => (j.key === jobKey ? { ...j, status } : j)))
@@ -93,6 +94,7 @@ export default function DashboardPage() {
         onSelectCandidate={(c) => setSelectedCandidate(c)}
         processingProfiles={processingProfiles}
         refreshKey={candidateRefreshKey}
+        candidateOverride={candidateOverride}
         selectedProfileKey={selectedCandidate?.profile_key}
         onCandidateRefreshed={(c) => setSelectedCandidate(c)}
         onProcessingChange={setProcessing}
@@ -107,6 +109,10 @@ export default function DashboardPage() {
           onProcessingChange={setProcessing}
           processingStatus={processingProfiles[selectedCandidate.profile_key] || null}
           onStageChange={handleCandidateStageChange}
+          onBonusSaved={(bonusDecimal) => {
+            setCandidateOverride({ profileKey: selectedCandidate.profile_key, bonus: bonusDecimal })
+            setCandidateRefreshKey((k) => k + 1)
+          }}
         />
       )}
     </div>

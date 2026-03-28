@@ -64,7 +64,6 @@ export default function JobInfoModal({ job, onClose }) {
     <div style={s.overlay} onClick={onClose}>
       <div style={s.modal} onClick={(e) => e.stopPropagation()}>
         <div style={s.header}>
-          <span style={{ fontSize: 18 }}>💼</span>
           <div style={s.title}>{job.name || 'Job Details'}</div>
           <button style={s.close} onClick={onClose}>✕</button>
         </div>

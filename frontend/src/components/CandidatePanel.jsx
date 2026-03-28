@@ -166,13 +166,14 @@ const s = {
   },
 }
 
-export default function CandidatePanel({ candidateRef, job, onClose, onProcessingChange, processingStatus }) {
+export default function CandidatePanel({ candidateRef, job, onClose, onProcessingChange, processingStatus, onBonusSaved }) {
   const [profile, setProfile] = useState(null)
   const [synthesis, setSynthesis] = useState(null)
   const [activeTab, setActiveTab] = useState('overview')
   const [loadingProfile, setLoadingProfile] = useState(true)
   const [loadingSynth, setLoadingSynth] = useState(false)
-  const [bonus, setBonus] = useState(candidateRef?.bonus || 0)
+  const [bonus, setBonus] = useState(Math.round((candidateRef?.bonus || 0) * 100))
+  const [savedBonus, setSavedBonus] = useState(Math.round((candidateRef?.bonus || 0) * 100))
   const [bonusSaving, setBonusSaving] = useState(false)
   const [localScores, setLocalScores] = useState(null)
   const [stages, setStages] = useState([])
@@ -186,7 +187,9 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
     setProfile(null)
     setSynthesis(null)
     setLocalScores(null)
-    setBonus(candidateRef.bonus || 0)
+    const b = Math.round((candidateRef.bonus || 0) * 100)
+    setBonus(b)
+    setSavedBonus(b)
     setCurrentStage(candidateRef.stage || 'applied')
 
     getCandidate(candidateRef.profile_key)
@@ -215,7 +218,9 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
     if (!job || !candidateRef) return
     setBonusSaving(true)
     try {
-      await updateBonus(candidateRef.profile_key, job.key, parseFloat(bonus) || 0)
+      await updateBonus(candidateRef.profile_key, job.key, (parseFloat(bonus) || 0) / 100)
+      setSavedBonus(parseFloat(bonus) || 0)
+      onBonusSaved?.((parseFloat(bonus) || 0) / 100)
     } catch (e) {
       console.error(e)
     } finally {
@@ -246,7 +251,7 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
   const effectiveBaseScore = localScores?.base_score ?? candidateRef.base_score ?? null
   const effectiveAiAdj = localScores?.ai_adjustment ?? candidateRef.ai_adjustment ?? 0
   const totalScore = effectiveBaseScore !== null
-    ? Math.min(1, Math.max(0, effectiveBaseScore + effectiveAiAdj + (parseFloat(bonus) || 0)))
+    ? Math.min(1, Math.max(0, effectiveBaseScore + effectiveAiAdj + savedBonus / 100))
     : null
 
   const currentStageIdx = stages.findIndex(st => st.key === currentStage)
@@ -269,9 +274,6 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
                 <span className={`score-badge ${scoreBadgeClass(totalScore)}`}>
                   {totalScore !== null ? `${Math.round(totalScore * 100)}%` : 'Not scored'}
                 </span>
-                {synthesis?.verdict && (
-                  <span className={`verdict ${synthesis.verdict}`}>{synthesis.verdict.replace('_', ' ')}</span>
-                )}
 
                 <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: '.7rem', color: 'var(--text-muted)' }}>Stage:</span>
@@ -329,6 +331,7 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
                     hrflowScore={effectiveBaseScore}
                     aiAdjustment={effectiveAiAdj}
                     bonus={bonus}
+                    savedBonus={savedBonus}
                     setBonus={setBonus}
                     onSaveBonus={handleBonusSave}
                     bonusSaving={bonusSaving}
@@ -506,9 +509,9 @@ function ChipSection({ title, items = [], color }) {
   )
 }
 
-function ScoringTab({ hrflowScore, aiAdjustment, bonus, setBonus, onSaveBonus, bonusSaving }) {
+function ScoringTab({ hrflowScore, aiAdjustment, bonus, savedBonus, setBonus, onSaveBonus, bonusSaving }) {
   const totalScore = hrflowScore !== null && hrflowScore !== undefined
-    ? Math.min(1, Math.max(0, hrflowScore + (aiAdjustment || 0) + (parseFloat(bonus) || 0)))
+    ? Math.min(1, Math.max(0, hrflowScore + (aiAdjustment || 0) + savedBonus / 100))
     : null
   const fmt = (v) => v !== null && v !== undefined ? `${Math.round(v * 100)}%` : '—'
   const fmtAdj = (v) => {
@@ -526,7 +529,7 @@ function ScoringTab({ hrflowScore, aiAdjustment, bonus, setBonus, onSaveBonus, b
           {[
             { label: 'HRFlow Score', value: fmt(hrflowScore) },
             { label: 'AI Adjustment', value: fmtAdj(aiAdjustment) },
-            { label: 'HR Bonus', value: fmtAdj(parseFloat(bonus) || 0) },
+            { label: 'HR Bonus', value: savedBonus > 0 ? `+${savedBonus}%` : `${savedBonus}%` },
             { label: 'Total', value: fmt(totalScore), highlight: true },
           ].map((item) => (
             <div key={item.label} style={{ padding: '14px', background: item.highlight ? '#e8f4fd' : 'var(--bg)', border: `1px solid ${item.highlight ? '#b3d9f5' : 'var(--border)'}`, borderRadius: 'var(--radius-lg)', textAlign: 'center' }}>
@@ -537,18 +540,30 @@ function ScoringTab({ hrflowScore, aiAdjustment, bonus, setBonus, onSaveBonus, b
         </div>
       </div>
 
-      <div>
-        <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 8 }}>HR Bonus adjustment</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <input
-            type="number"
-            min="-1" max="1" step="0.01"
-            value={bonus}
-            onChange={(e) => setBonus(e.target.value)}
-            style={{ width: 90, border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '6px 10px', fontSize: '.875rem', outline: 'none' }}
-          />
-          <span style={{ color: 'var(--text-muted)', fontSize: '.8rem' }}>value between -1.0 and +1.0</span>
-          <button className="btn-primary" onClick={onSaveBonus} disabled={bonusSaving}>
+      <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px' }}>
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 2 }}>HR Bonus adjustment</div>
+          <div style={{ fontSize: '.8rem', color: 'var(--text-muted)' }}>Manually override the candidate score. Value between −100 and +100.</div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 0, border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden', background: 'var(--surface)' }}>
+            <button
+              style={{ background: 'none', border: 'none', padding: '7px 12px', fontSize: '1rem', cursor: 'pointer', color: 'var(--text-muted)', borderRight: '1px solid var(--border)' }}
+              onClick={() => setBonus(v => Math.max(-100, (parseInt(v) || 0) - 1))}
+            >−</button>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={bonus}
+              onChange={(e) => setBonus(e.target.value)}
+              style={{ width: 72, border: 'none', background: 'transparent', padding: '7px 8px', fontSize: '.875rem', outline: 'none', textAlign: 'center', color: 'var(--text)' }}
+            />
+            <button
+              style={{ background: 'none', border: 'none', padding: '7px 12px', fontSize: '1rem', cursor: 'pointer', color: 'var(--text-muted)', borderLeft: '1px solid var(--border)' }}
+              onClick={() => setBonus(v => Math.min(100, (parseInt(v) || 0) + 1))}
+            >+</button>
+          </div>
+          <button className="btn-primary" onClick={onSaveBonus} disabled={bonusSaving} style={{ minWidth: 70 }}>
             {bonusSaving ? 'Saving…' : 'Save'}
           </button>
         </div>

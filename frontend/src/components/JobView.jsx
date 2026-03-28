@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { getJobCandidates, getCandidate, gradeCandidate, synthesizeCandidate, updateJobStatus } from '../services/api'
+import { getJobCandidates, getCandidate, gradeCandidate, synthesizeCandidate, updateJobStatus, getJobStages } from '../services/api'
 import UploadResumeModal from './UploadResumeModal'
 import JobInfoModal from './JobInfoModal'
 import StageManager from './StageManager'
@@ -104,10 +104,11 @@ const s = {
     top: 0,
     background: 'var(--bg)',
   },
-  tr: (hovering, selected) => ({
+  tr: (hovering, selected, rejected) => ({
     background: selected ? '#f0f7ff' : (hovering ? '#f8f9fa' : 'transparent'),
     cursor: 'pointer',
     transition: 'background .1s',
+    opacity: rejected ? 0.45 : 1,
   }),
   td: {
     padding: '13px 16px',
@@ -148,11 +149,10 @@ const s = {
     letterSpacing: '.03em',
     background: status === 'open' ? '#e6f4ea' : status === 'on_hold' ? '#fef7e0' : '#fce8e6',
     color: status === 'open' ? '#1e7e34' : status === 'on_hold' ? '#b05d00' : '#d93025',
-    border: '1px solid ' + (status === 'open' ? '#c3e6cb' : status === 'on_hold' ? '#ffeeba' : '#f5c6cb'),
   }),
 }
 
-export default function JobView({ job, onSelectCandidate, processingProfiles = {}, refreshKey = 0, selectedProfileKey, onCandidateRefreshed, onProcessingChange, onJobStatusChange }) {
+export default function JobView({ job, onSelectCandidate, processingProfiles = {}, refreshKey = 0, selectedProfileKey, onCandidateRefreshed, onProcessingChange, onJobStatusChange, candidateOverride }) {
   const [candidates, setCandidates] = useState([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
@@ -162,6 +162,9 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
   const [showJobInfo, setShowJobInfo] = useState(false)
   const [showStageManager, setShowStageManager] = useState(false)
   const [localStatus, setLocalStatus] = useState(job?.status || 'open')
+  const [sortBy, setSortBy] = useState('score')
+  const [stageOrder, setStageOrder] = useState({})
+  const [stageLabels, setStageLabels] = useState({})
 
   const selectedProfileKeyRef = useRef(selectedProfileKey)
   const onCandidateRefreshedRef = useRef(onCandidateRefreshed)
@@ -219,6 +222,23 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
     setLocalStatus(job?.status || 'open')
   }, [fetchCandidates, job?.status])
 
+  useEffect(() => {
+    if (!candidateOverride) return
+    setCandidates(prev => prev.map(c =>
+      c.profile_key === candidateOverride.profileKey ? { ...c, bonus: candidateOverride.bonus } : c
+    ))
+  }, [candidateOverride])
+
+  useEffect(() => {
+    if (!job?.key) return
+    getJobStages(job.key).then((data) => {
+      const order = {}, labels = {}
+      ;(data.stages || []).forEach((s, i) => { order[s.key] = i; labels[s.key] = s.label })
+      setStageOrder(order)
+      setStageLabels(labels)
+    }).catch(() => {})
+  }, [job?.key])
+
   const allStages = ['all', ...new Set(candidates.map((c) => c.stage).filter(Boolean))]
 
   const filtered = candidates.filter((c) => {
@@ -228,11 +248,35 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
     return matchSearch && matchStage
   })
 
+  const getTotal = (c) => c.score !== null && c.score !== undefined ? Math.min(1, c.score + (c.bonus || 0)) : null
+
+  const sorted = [...filtered].sort((a, b) => {
+    if (sortBy === 'score') {
+      const ta = getTotal(a), tb = getTotal(b)
+      if (ta === null && tb === null) return 0
+      if (ta === null) return 1
+      if (tb === null) return -1
+      return tb - ta
+    } else {
+      const sa = a.stage || '', sb = b.stage || ''
+      if (sa === 'rejected' && sb !== 'rejected') return 1
+      if (sb === 'rejected' && sa !== 'rejected') return -1
+      if (sa !== sb) {
+        const oa = stageOrder[sa] ?? -1, ob = stageOrder[sb] ?? -1
+        return ob - oa  // higher order index = more advanced = first
+      }
+      const ta = getTotal(a), tb = getTotal(b)
+      if (ta === null && tb === null) return 0
+      if (ta === null) return 1
+      if (tb === null) return -1
+      return tb - ta
+    }
+  })
+
   if (!job) {
     return (
       <div style={{ ...s.root, justifyContent: 'center', alignItems: 'center' }}>
         <div style={s.empty}>
-          <div style={{ fontSize: '2rem', marginBottom: 12 }}>📋</div>
           <div style={{ fontWeight: 600, marginBottom: 4 }}>Select a job</div>
           <div style={{ fontSize: '.8125rem' }}>Pick a job from the sidebar to view candidates</div>
         </div>
@@ -243,26 +287,20 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
   return (
     <div style={s.root}>
       <div style={s.header}>
-        <div style={{ ...s.title, display: 'flex', alignItems: 'center', gap: 10 }}>
-          {job.name || job.key}
-          <button
-            style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 16, opacity: 0.6, padding: 4 }}
-            onClick={() => setShowJobInfo(true)}
-            title="View job details"
-          >ℹ️</button>
-        </div>
-        <div
-          style={s.statusBadge(localStatus)}
-          title={`Job is currently ${localStatus.replace('_', ' ')}`}
-        >
+        <div style={{ ...s.title, flex: 'none' }}>{job.name || job.key}</div>
+        <div style={{ ...s.statusBadge(localStatus), marginLeft: 16 }} title={`Job is currently ${localStatus.replace('_', ' ')}`}>
           {localStatus.replace('_', ' ')}
         </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 10 }}>
+        <div style={{ flex: 1 }} />
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <button className="btn-secondary" onClick={() => setShowJobInfo(true)} title="View job details">
+            Info
+          </button>
           <button className="btn-secondary" onClick={() => setShowStageManager(true)}>
-            ⚙️ Pipeline
+            Pipeline
           </button>
           <button className="btn-primary" onClick={() => setShowUpload(true)} disabled={loading}>
-            📎 Add candidate
+            Add candidate
           </button>
         </div>
       </div>
@@ -285,10 +323,18 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
         >
           {allStages.map((st) => (
             <option key={st} value={st}>
-              {st === 'all' ? 'All stages' : st.replace(/_/g, ' ')}
+              {st === 'all' ? 'All stages' : (stageLabels[st] || st.replace(/_/g, ' '))}
             </option>
           ))}
         </select>
+
+        <button
+          className="btn-ghost"
+          onClick={() => setSortBy(s => s === 'score' ? 'status' : 'score')}
+          title={sortBy === 'score' ? 'Sort by stage' : 'Sort by score'}
+        >
+          {sortBy === 'score' ? 'Score' : 'Stage'}
+        </button>
 
         <div style={{ fontSize: '.8rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
           {filtered.length} candidate{filtered.length !== 1 ? 's' : ''}
@@ -300,7 +346,7 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
           <div style={{ padding: 40, textAlign: 'center' }}>
             <div className="spinner" />
           </div>
-        ) : filtered.length === 0 ? (
+        ) : sorted.length === 0 ? (
           <div style={s.empty}>No candidates found</div>
         ) : (
           <table style={s.table}>
@@ -314,15 +360,16 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((c, i) => {
+              {sorted.map((c, i) => {
                 const initials = `${c.first_name?.[0] || ''}${c.last_name?.[0] || ''}`.toUpperCase() || '?'
                 const total = c.score !== null && c.score !== undefined
                   ? Math.min(1, c.score + (c.bonus || 0))
                   : null
+                const isRejected = c.stage === 'rejected'
                 return (
                   <tr
                     key={c.profile_key}
-                    style={s.tr(hovered === c.profile_key, selectedProfileKey === c.profile_key)}
+                    style={s.tr(hovered === c.profile_key, selectedProfileKey === c.profile_key, isRejected)}
                     onClick={() => onSelectCandidate(c)}
                     onMouseEnter={() => setHovered(c.profile_key)}
                     onMouseLeave={() => setHovered(null)}
@@ -356,9 +403,7 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
                         textTransform: 'capitalize',
                         fontWeight: 500
                       }}>
-                        {c.stage?.startsWith('custom_') 
-                          ? c.stage.slice(7).replace(/_/g, ' ') 
-                          : c.stage?.replace(/_/g, ' ')}
+                        {stageLabels[c.stage] || (c.stage?.startsWith('custom_') ? c.stage.slice(7).replace(/_/g, ' ') : c.stage?.replace(/_/g, ' '))}
                       </span>
                     </td>
                     <td style={{ ...s.td, textAlign: 'center' }}>

@@ -105,14 +105,17 @@ const s = {
   actionItem: {
     display: 'flex',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 8,
-    padding: '6px 10px',
+    padding: '9px 10px',
     borderRadius: 'var(--radius)',
     cursor: 'pointer',
-    color: 'var(--sidebar-muted)',
-    fontSize: '.8rem',
+    background: 'var(--accent)',
+    color: '#fff',
+    fontSize: '.875rem',
+    fontWeight: 600,
     marginBottom: 1,
-    transition: 'background .1s, color .1s',
+    transition: 'background .1s',
   },
   footer: {
     padding: '14px 18px',
@@ -207,11 +210,10 @@ export default function Sidebar({ jobs, selectedJobKey, onSelectJob, loading, on
           <div
             style={s.actionItem}
             onClick={() => setShowCreateJob(true)}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--sidebar-hover)'; e.currentTarget.style.color = 'var(--sidebar-text)' }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--sidebar-muted)' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-hover)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--accent)' }}
           >
-            <span style={{ fontSize: 14 }}>💼</span>
-            <span>Create job</span>
+            <span>+ New job</span>
           </div>
         </div>
 
