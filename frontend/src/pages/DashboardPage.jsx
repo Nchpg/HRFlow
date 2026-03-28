@@ -35,8 +35,7 @@ export default function DashboardPage() {
   }
 
   function handleCandidateStageChange(profileKey, stage) {
-    // This will trigger a re-render of JobView if it's open for the same job
-    setCandidateRefreshKey((k) => k + 1)
+    setCandidateOverride((prev) => ({ ...prev, profileKey, stage }))
   }
 
   function setProcessing(profileKey, status) {

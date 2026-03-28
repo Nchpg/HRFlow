@@ -166,7 +166,7 @@ const s = {
   },
 }
 
-export default function CandidatePanel({ candidateRef, job, onClose, onProcessingChange, processingStatus, onBonusSaved }) {
+export default function CandidatePanel({ candidateRef, job, onClose, onProcessingChange, processingStatus, onBonusSaved, onStageChange }) {
   const [profile, setProfile] = useState(null)
   const [synthesis, setSynthesis] = useState(null)
   const [activeTab, setActiveTab] = useState('overview')
@@ -322,7 +322,7 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
           <PipelineProgress stages={stages} currentIdx={currentStageIdx} />
 
           {/* Processing status banner */}
-          {(loadingSynth || processingStatus) && (
+          {!loadingProfile && (loadingSynth || processingStatus) && (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '7px 20px', fontSize: '.8rem', color: 'var(--accent)', background: '#f0f4ff', borderBottom: '1px solid var(--border)', lineHeight: 1 }}>
               <div className="spinner" style={{ width: 13, height: 13, flexShrink: 0, margin: 0 }} />
               <span>{loadingSynth ? 'Generating synthesis…' : processingStatus}</span>
@@ -525,7 +525,7 @@ function ChipSection({ title, items = [], color }) {
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
         {items.map((item, i) => (
           <span key={i} style={{ fontSize: '.75rem', padding: '.2rem .6rem', borderRadius: 99, background: color, color: '#333', fontWeight: 500 }}>
-            {item}
+            {typeof item === 'object' ? (item.name || item.description || JSON.stringify(item)) : item}
           </span>
         ))}
       </div>

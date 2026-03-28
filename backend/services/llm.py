@@ -111,16 +111,20 @@ Critical Instruction on Contradictions:
 Rules for strengths and weaknesses:
 - strengths: skills, experiences, or qualities that directly match or exceed the job requirements,
   verified across ALL available documents.
-- weaknesses: ONLY skills or experiences that are explicitly required by the job and clearly missing
-  OR shown to be lacking during the evaluation process (interviews, tests, etc.).
-- upskilling: concrete learning recommendations to close actual gaps in required skills only.
+- weaknesses: ONLY skills or experiences that are EXPLICITLY required by the job description AND clearly absent
+  from the candidate's profile OR proven to be lacking by evidence in the extra documents (e.g. an interview).
+  A skill not mentioned anywhere in the job offer is NOT a weakness, even if the candidate does not have it.
+  Do NOT invent weaknesses. If there are no genuine weaknesses, return an empty array.
+- upskilling: concrete learning recommendations to close ONLY the gaps identified as real weaknesses above.
+  Do NOT add upskilling recommendations for skills not required by the job.
 
-Respond ONLY with valid JSON:
+Respond ONLY with valid JSON — no markdown, no code fences, no extra keys.
+Every value in "strengths", "weaknesses", and "upskilling" MUST be a plain string, not an object.
 {
   "summary": "<2-3 sentence narrative, explicitly noting any major contradictions found between the CV and extra documents>",
-  "strengths": ["<strength 1>", "<strength 2>", ...],
-  "weaknesses": ["<weakness 1>", ...],
-  "upskilling": ["<recommendation 1>", ...]
+  "strengths": ["<plain string>", "<plain string>", ...],
+  "weaknesses": ["<plain string>", ...],
+  "upskilling": ["<plain string>", ...]
 }"""
 
 

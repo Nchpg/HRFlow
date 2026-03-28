@@ -168,11 +168,14 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
 
   const selectedProfileKeyRef = useRef(selectedProfileKey)
   const onCandidateRefreshedRef = useRef(onCandidateRefreshed)
+  const currentJobKeyRef = useRef(job?.key)
   useEffect(() => { selectedProfileKeyRef.current = selectedProfileKey }, [selectedProfileKey])
   useEffect(() => { onCandidateRefreshedRef.current = onCandidateRefreshed }, [onCandidateRefreshed])
+  useEffect(() => { currentJobKeyRef.current = job?.key }, [job?.key])
 
   const fetchCandidates = useCallback(async () => {
     if (!job) return
+    const fetchedForKey = job.key  // capture at call time
     setLoading(true)
     try {
       void refreshKey
@@ -218,6 +221,8 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
           } catch { stillPending.push(key) }
         })
       )
+      // Discard results if the user has already switched to a different job
+      if (currentJobKeyRef.current !== fetchedForKey) return
       setPendingKeys(job.key, stillPending)
       setCandidates(list)
       if (selectedProfileKeyRef.current) {
@@ -227,7 +232,7 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
     } catch (e) {
       console.error(e)
     } finally {
-      setLoading(false)
+      if (currentJobKeyRef.current === fetchedForKey) setLoading(false)
     }
   }, [job, refreshKey])
 
@@ -239,9 +244,13 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
 
   useEffect(() => {
     if (!candidateOverride) return
-    setCandidates(prev => prev.map(c =>
-      c.profile_key === candidateOverride.profileKey ? { ...c, bonus: candidateOverride.bonus } : c
-    ))
+    setCandidates(prev => prev.map(c => {
+      if (c.profile_key !== candidateOverride.profileKey) return c
+      const patch = {}
+      if (candidateOverride.bonus !== undefined) patch.bonus = candidateOverride.bonus
+      if (candidateOverride.stage !== undefined) patch.stage = candidateOverride.stage
+      return { ...c, ...patch }
+    }))
   }, [candidateOverride])
 
   useEffect(() => {
