@@ -4,6 +4,7 @@ import json
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from services import hrflow
+from routers.ai import _score_cache, _cache_key
 
 router = APIRouter()
 
@@ -103,7 +104,8 @@ async def update_bonus(profile_key: str, payload: BonusPayload):
             if t.get("name") != f"job_data_{payload.job_key}"
         ]
         new_tag = hrflow.build_job_tag(payload.job_key, score, payload.bonus)
-        updated = await hrflow.patch_profile_tags(profile_key, existing_tags + [new_tag])
+        await hrflow.patch_profile_tags(profile_key, existing_tags + [new_tag])
+        _score_cache[_cache_key(payload.job_key, profile_key)] = {"score": score, "bonus": payload.bonus}
         return {"ok": True, "score": score, "bonus": payload.bonus}
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))

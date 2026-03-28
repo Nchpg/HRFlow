@@ -7,8 +7,9 @@ from services import hrflow, llm
 
 router = APIRouter()
 
-# In-memory cache for synthesis results (survives HRFlow indexing delays)
+# In-memory caches (survive HRFlow tag indexing delays)
 _synthesis_cache: dict[str, dict] = {}
+_score_cache: dict[str, dict] = {}  # key -> {score, bonus}
 
 def _cache_key(job_key: str, profile_key: str) -> str:
     return f"{job_key}:{profile_key}"
@@ -45,6 +46,9 @@ async def grade_candidate(req: GradeRequest):
 
         result = await llm.grade_candidate(job, profile, tracking or {}, base_score, upskilling)
         final_score = result.get("final_score", base_score)
+
+        # Cache score immediately (HRFlow tag indexing delay workaround)
+        _score_cache[_cache_key(req.job_key, req.profile_key)] = {"score": final_score, "bonus": 0.0}
 
         # Persist score tag
         await _patch_tag(

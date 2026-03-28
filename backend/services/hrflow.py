@@ -107,6 +107,7 @@ async def list_trackings(job_key: str) -> list[dict]:
             headers=_headers(),
             params={
                 "board_key": settings.hrflow_board_key,
+                "source_keys": f'["{settings.hrflow_source_key}"]',
                 "job_key": job_key,
                 "limit": 100,
             },
@@ -135,25 +136,29 @@ async def get_tracking(job_key: str, profile_key: str) -> dict | None:
 # ---------------------------------------------------------------------------
 
 async def get_profile_score(job_key: str, profile_key: str) -> float | None:
-    """Return the HRFlow base score for a profile against a job."""
+    """Return the HRFlow base score for a profile against a job.
+    Returns None (non-fatal) on 400/404 — profile may not be indexed yet.
+    """
     async with httpx.AsyncClient() as client:
         r = await client.get(
             f"{BASE_URL}/profiles/scoring",
             headers=_headers(),
             params={
-                "board_keys": f'["{settings.hrflow_board_key}"]',
+                "board_key": settings.hrflow_board_key,
                 "source_keys": f'["{settings.hrflow_source_key}"]',
+                "algorithm_key": "b1ebac4c62fa96e06206f4433b95ae69674891ff",
                 "job_key": job_key,
                 "profile_key": profile_key,
                 "limit": 1,
             },
             timeout=20,
         )
-        r.raise_for_status()
-        profiles = r.json().get("data", {}).get("profiles", [])
-        if profiles:
-            return profiles[0].get("score")
+    if r.status_code in (400, 404):
+        print(f"[get_profile_score] {r.status_code} {r.text[:200]}", flush=True)
         return None
+    r.raise_for_status()
+    profiles = r.json().get("data", {}).get("profiles", [])
+    return profiles[0].get("score") if profiles else None
 
 
 async def get_job_upskilling(job_key: str, profile_key: str) -> dict:
@@ -218,21 +223,23 @@ async def create_job(payload: dict) -> dict:
 
 async def create_tracking(job_key: str, profile_key: str, stage: str = "applied") -> dict:
     """Create a tracking entry linking a profile to a job."""
+    payload = {
+        "board_key": settings.hrflow_board_key,
+        "source_key": settings.hrflow_source_key,
+        "job_key": job_key,
+        "profile_key": profile_key,
+        "stage": stage,
+        "role": "candidate",
+    }
     async with httpx.AsyncClient() as client:
         r = await client.post(
-            f"{BASE_URL}/tracking/indexing",
+            f"{BASE_URL}/tracking",
             headers={**_headers(), "Content-Type": "application/json"},
-            json={
-                "board_key": settings.hrflow_board_key,
-                "source_key": settings.hrflow_source_key,
-                "job_key": job_key,
-                "profile_key": profile_key,
-                "stage": stage,
-            },
+            json=payload,
             timeout=20,
         )
-        r.raise_for_status()
-        return r.json().get("data", {})
+    r.raise_for_status()
+    return r.json().get("data", {})
 
 
 # ---------------------------------------------------------------------------

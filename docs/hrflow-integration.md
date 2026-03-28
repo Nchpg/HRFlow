@@ -73,8 +73,8 @@ Writable fields: `reference`, `info`, `text`, `summary`, `cover_letter`, `experi
 
 | Action | Method | Endpoint |
 |--------|--------|----------|
-| List trackings for a job | `GET` | `/v1/tracking/list?board_key={key}&job_key={job_key}&limit=100` |
-| Create tracking | `POST` | `/v1/tracking/indexing` |
+| List trackings for a job | `GET` | `/v1/tracking/list?board_key={key}&source_keys=["{key}"]&job_key={job_key}&limit=100` |
+| Create tracking | `POST` | `/v1/tracking` |
 
 **Create tracking payload:**
 ```json
@@ -83,7 +83,8 @@ Writable fields: `reference`, `info`, `text`, `summary`, `cover_letter`, `experi
   "source_key": "...",
   "job_key": "...",
   "profile_key": "...",
-  "stage": "applied"
+  "stage": "applied",
+  "role": "candidate"
 }
 ```
 
@@ -95,7 +96,7 @@ Writable fields: `reference`, `info`, `text`, `summary`, `cover_letter`, `experi
 
 | Action | Method | Endpoint |
 |--------|--------|----------|
-| Native profile score | `GET` | `/v1/profiles/scoring?board_keys=[...]&source_keys=[...]&job_key=...&profile_key=...` |
+| Native profile score | `GET` | `/v1/profiles/scoring?board_key=...&source_keys=[...]&job_key=...&profile_key=...` |
 | Upskilling analysis | `GET` | `/v1/job/upskilling?board_key=...&job_key=...&source_key=...&profile_key=...` |
 
 ---
@@ -131,6 +132,9 @@ The synthesis tag value is a JSON-serialized synthesis object. It is also cached
 | `GET /jobs/searching` returns 0 results | Missing `query=""` param | Added `"query": ""` to params |
 | `PUT /profile/indexing` returns 400 | Missing required profile fields | Full profile fetched first, all mutable fields included |
 | `PATCH /profile/indexing` returns 405 | Method not supported | Changed to `PUT` |
+| `POST /tracking` requires `role` field | Missing `role` causes 400 | Added `"role": "candidate"` |
+| Singular vs plural param names | Singular (`source_key`) = 1-to-1 lookup; plural (`source_keys` as JSON array) = 1-to-N search/list | Use `source_keys=["{key}"]` for list endpoints, `source_key={key}` for single-resource endpoints |
+| `GET /profiles/scoring` returns 400 on fresh upload | Profile not indexed yet | Returns `None`, grading proceeds without base score |
 | New jobs not in search results | HRFlow search index delay | localStorage pending keys + individual GET fallback |
 | New candidates not in tracking list | Same indexing delay | localStorage pending candidates per job + individual GET fallback |
 | Synthesis not visible after write | Same indexing delay on tags | In-memory `_synthesis_cache` dict on backend |
