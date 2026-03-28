@@ -18,13 +18,13 @@ const s = {
   brand: {
     color: '#fff',
     fontWeight: 700,
-    fontSize: '1.1rem',
-    letterSpacing: '-.01em',
+    fontSize: '1.4rem',
+    letterSpacing: '-.02em',
   },
   sub: {
     color: 'var(--sidebar-muted)',
     fontSize: '.75rem',
-    marginTop: 3,
+    marginTop: 2,
   },
   search: {
     margin: '10px 10px 6px',
@@ -150,8 +150,7 @@ export default function Sidebar({ jobs, selectedJobKey, onSelectJob, loading, on
     <>
       <aside style={s.sidebar}>
         <div style={s.header}>
-          <div style={s.brand}>HRFlow</div>
-          <div style={s.sub}>Candidate Pipeline</div>
+          <div style={s.brand}>HRévolution</div>
         </div>
 
         <div style={s.search}>

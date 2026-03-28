@@ -120,8 +120,7 @@ Respond ONLY with valid JSON:
   "summary": "<2-3 sentence narrative, explicitly noting any major contradictions found between the CV and extra documents>",
   "strengths": ["<strength 1>", "<strength 2>", ...],
   "weaknesses": ["<weakness 1>", ...],
-  "upskilling": ["<recommendation 1>", ...],
-  "verdict": "strong_yes | yes | maybe | no"
+  "upskilling": ["<recommendation 1>", ...]
 }"""
 
 
@@ -166,7 +165,7 @@ async def synthesize_candidate(
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
-        return {"summary": raw, "strengths": [], "weaknesses": [], "upskilling": [], "verdict": "maybe"}
+        return {"summary": raw, "strengths": [], "weaknesses": [], "upskilling": []}
 
 
 # ---------------------------------------------------------------------------

@@ -220,9 +220,6 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
                 <span className={`score-badge ${scoreBadgeClass(totalScore)}`}>
                   {totalScore !== null ? `${Math.round(totalScore * 100)}%` : 'Not scored'}
                 </span>
-                {synthesis?.verdict && (
-                  <span className={`verdict ${synthesis.verdict}`}>{synthesis.verdict.replace('_', ' ')}</span>
-                )}
               </div>
             </div>
             <button style={s.closeBtn} onClick={onClose}>✕</button>
