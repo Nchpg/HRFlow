@@ -31,53 +31,61 @@ async def _chat(system: str, user: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Grading
+# Per-document scoring
 # ---------------------------------------------------------------------------
 
-GRADE_SYSTEM = """You are an expert HR evaluator. Given a job description, a candidate profile,
-and their application data (cover letter, quiz answers), produce a final score between 0 and 1
-(two decimal places) that adjusts the provided HRFlow base score.
+DOCUMENT_SCORE_SYSTEM = """You are an expert HR evaluator scoring a single supplementary document attached to a candidate profile.
+
+Your task: assign a delta score (-0.2 to +0.2) representing the net signal THIS document alone contributes to the evaluation.
+
+Context provided:
+- The single document to score
+- All other already-attached documents (for cross-document analysis only)
 
 Scoring rules:
-- Reward candidates who match or exceed the required skills and experience.
-- Additional specialties or skills beyond the job requirements are NEUTRAL or SLIGHTLY POSITIVE —
-  they show versatility. Never penalise a candidate for having more skills than required.
-- Only reduce the score for skills or experience that are explicitly required and clearly absent.
+- POSITIVE delta (+0.01 to +0.2): document reveals strengths, achievements, or qualities that genuinely support the candidate's fit.
+- NEAR ZERO (0.0): document is neutral, redundant, or doesn't add meaningful new signal.
+- NEGATIVE delta (-0.01 to -0.2): document contains an explicit red flag OR directly CONTRADICTS a specific positive claim made in another document (e.g., one doc praises leadership, this one describes a dismissal for misconduct).
 
-Respond ONLY with valid JSON in this exact shape:
+Critical: a document that is simply "less impressive" than another is NOT a contradiction — assign 0 or a small positive, never negative. Only genuine factual contradictions or explicit red flags warrant a negative delta.
+
+Do NOT re-evaluate the candidate against the job — HRFlow already handles that. Only assess what this specific document uniquely adds or reveals.
+
+Respond ONLY with valid JSON:
 {
-  "final_score": <float 0-1>,
-  "rationale": "<one sentence>"
+  "delta": <float between -0.2 and 0.2>,
+  "rationale": "<one sentence explaining this document's individual contribution>"
 }"""
 
 
-async def grade_candidate(
+async def score_single_document(
     job: dict,
     profile: dict,
-    tracking: dict,
-    base_score: float,
-    upskilling: dict,
+    document: dict,
+    other_docs: list[dict],
 ) -> dict:
-    """Return adjusted final score from the LLM."""
-    user_content = json.dumps(
-        {
-            "base_score": base_score,
-            "job_title": job.get("name", ""),
-            "job_summary": job.get("summary", ""),
-            "candidate_name": f"{profile.get('info', {}).get('first_name', '')} {profile.get('info', {}).get('last_name', '')}",
-            "cover_letter": tracking.get("message", ""),
-            "quiz_answers": tracking.get("answers", []),
-            "strengths": upskilling.get("strengths", []),
-            "weaknesses": upskilling.get("weaknesses", []),
-            "skill_gaps": upskilling.get("skill_gaps", []),
+    """Score a single supplementary document in the context of all other documents.
+    Returns {"delta": float, "rationale": str}.
+    """
+    user_content = json.dumps({
+        "job_title": job.get("name", ""),
+        "candidate_name": f"{profile.get('info', {}).get('first_name', '')} {profile.get('info', {}).get('last_name', '')}",
+        "document_to_score": {
+            "filename": document.get("filename", ""),
+            "content": document.get("content", ""),
         },
-        ensure_ascii=False,
-    )
-    raw = await _chat(GRADE_SYSTEM, user_content)
+        "other_documents": [
+            {"filename": d.get("filename", ""), "content": d.get("content", "")}
+            for d in other_docs
+        ],
+    }, ensure_ascii=False)
+    raw = await _chat(DOCUMENT_SCORE_SYSTEM, user_content)
     try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        return {"final_score": base_score, "rationale": raw}
+        result = json.loads(raw)
+        delta = max(-0.2, min(0.2, float(result.get("delta", 0.0))))
+        return {"delta": round(delta, 3), "rationale": result.get("rationale", "")}
+    except (json.JSONDecodeError, ValueError):
+        return {"delta": 0.0, "rationale": raw}
 
 
 # ---------------------------------------------------------------------------

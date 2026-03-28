@@ -52,3 +52,9 @@ export const synthesizeCandidate = (jobKey, profileKey) =>
   request('POST', '/ai/synthesize', { job_key: jobKey, profile_key: profileKey })
 export const askQuestions = (jobKey, profileKey) =>
   request('POST', '/ai/ask', { job_key: jobKey, profile_key: profileKey })
+
+// ── Extra Documents ────────────────────────────────────────────────────────
+export const getExtraDocuments = (profileKey, jobKey) =>
+  request('GET', `/candidates/${profileKey}/documents?job_key=${jobKey}`)
+export const uploadExtraDocument = (profileKey, jobKey, filename, content) =>
+  request('POST', `/candidates/${profileKey}/documents`, { job_key: jobKey, filename, content })

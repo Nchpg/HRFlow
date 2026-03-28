@@ -268,6 +268,89 @@ def extract_tag(profile: dict, name: str):
     return None
 
 
+EXTRA_DOC_PREFIX = "extra_doc_"
+MAX_DOC_CONTENT = 8_000
+
+
+async def patch_profile_metadatas(profile_key: str, metadatas: list[dict]) -> dict:
+    """Update the metadatas field on a profile (PUT with full mutable profile payload)."""
+    profile = await get_profile(profile_key)
+    payload: dict = {"source_key": settings.hrflow_source_key, "key": profile_key, "metadatas": metadatas}
+    for field in _PROFILE_WRITABLE - {"metadatas"}:
+        if field in profile and profile[field] is not None:
+            payload[field] = profile[field]
+    async with httpx.AsyncClient() as client:
+        r = await client.put(
+            f"{BASE_URL}/profile/indexing",
+            headers={**_headers(), "Content-Type": "application/json"},
+            json=payload,
+            timeout=15,
+        )
+        r.raise_for_status()
+        return r.json().get("data", {})
+
+
+def get_extra_documents(profile: dict, job_key: str) -> list[dict]:
+    """Extract extra HR documents for a given job from a profile's metadatas."""
+    import json as _json
+    prefix = f"{EXTRA_DOC_PREFIX}{job_key}_"
+    docs = []
+    for meta in profile.get("metadatas", []) or []:
+        name = meta.get("name", "")
+        if name.startswith(prefix):
+            try:
+                doc = _json.loads(meta.get("value", "{}"))
+                doc["id"] = name
+                docs.append(doc)
+            except Exception:
+                pass
+    docs.sort(key=lambda d: d.get("uploaded_at", ""))
+    return docs
+
+
+async def add_extra_document(profile_key: str, job_key: str, filename: str, content: str, uploaded_by: str = "") -> str:
+    """Append an extra document to a profile's metadatas. Returns the metadata name (id)."""
+    import json as _json
+    import time as _time
+    from datetime import datetime, timezone
+    profile = await get_profile(profile_key)
+    existing = list(profile.get("metadatas", []) or [])
+    ts = int(_time.time())
+    name = f"{EXTRA_DOC_PREFIX}{job_key}_{ts}"
+    existing.append({
+        "name": name,
+        "value": _json.dumps({
+            "job_key": job_key,
+            "filename": filename or f"document_{ts}.txt",
+            "content": content[:MAX_DOC_CONTENT],
+            "uploaded_by": uploaded_by,
+            "uploaded_at": datetime.now(timezone.utc).isoformat(),
+        }),
+    })
+    await patch_profile_metadatas(profile_key, existing)
+    return name
+
+
+async def update_documents_with_deltas(profile_key: str, job_key: str, scored_docs: list[dict]) -> None:
+    """Write AI-computed delta and rationale into each document's metadata entry."""
+    import json as _json
+    profile = await get_profile(profile_key)
+    scored_map = {d["id"]: d for d in scored_docs}
+    updated_metadatas = []
+    for meta in profile.get("metadatas", []) or []:
+        name = meta.get("name", "")
+        if name.startswith(f"{EXTRA_DOC_PREFIX}{job_key}_") and name in scored_map:
+            try:
+                doc_data = _json.loads(meta.get("value", "{}"))
+                doc_data["delta"] = scored_map[name].get("delta", 0.0)
+                doc_data["delta_rationale"] = scored_map[name].get("rationale", "")
+                meta = {"name": name, "value": _json.dumps(doc_data)}
+            except Exception:
+                pass
+        updated_metadatas.append(meta)
+    await patch_profile_metadatas(profile_key, updated_metadatas)
+
+
 def build_job_tag(job_key: str, score: float, bonus: float = 0.0, base_score: float = None) -> dict:
     """Build a HRFlow tag dict for storing job scoring data."""
     import json

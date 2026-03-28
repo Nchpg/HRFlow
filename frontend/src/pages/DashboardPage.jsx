@@ -22,6 +22,17 @@ export default function DashboardPage() {
   const [loadingJobs, setLoadingJobs] = useState(true)
   const [selectedJob, setSelectedJob] = useState(null)
   const [selectedCandidate, setSelectedCandidate] = useState(null)
+  // processingProfiles: { [profileKey]: statusLabel } — shared across panel + list
+  const [processingProfiles, setProcessingProfiles] = useState({})
+  const [candidateRefreshKey, setCandidateRefreshKey] = useState(0)
+
+  function setProcessing(profileKey, status) {
+    setProcessingProfiles((prev) =>
+      status ? { ...prev, [profileKey]: status } : Object.fromEntries(Object.entries(prev).filter(([k]) => k !== profileKey))
+    )
+    // When processing finishes, trigger a list refresh so scores update
+    if (!status) setCandidateRefreshKey((k) => k + 1)
+  }
 
   async function fetchJobs() {
     setLoadingJobs(true)
@@ -68,6 +79,10 @@ export default function DashboardPage() {
       <JobView
         job={selectedJob}
         onSelectCandidate={(c) => setSelectedCandidate(c)}
+        processingProfiles={processingProfiles}
+        refreshKey={candidateRefreshKey}
+        selectedProfileKey={selectedCandidate?.profile_key}
+        onCandidateRefreshed={(c) => setSelectedCandidate(c)}
       />
 
       {selectedCandidate && (
@@ -75,6 +90,8 @@ export default function DashboardPage() {
           candidateRef={selectedCandidate}
           job={selectedJob}
           onClose={() => setSelectedCandidate(null)}
+          onProcessingChange={setProcessing}
+          processingStatus={processingProfiles[selectedCandidate.profile_key] || null}
         />
       )}
     </div>

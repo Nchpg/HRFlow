@@ -1,0 +1,386 @@
+import { useState, useEffect, useRef } from 'react'
+import { getExtraDocuments, uploadExtraDocument, gradeCandidate } from '../services/api'
+
+function formatDate(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) +
+    ' ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+}
+
+function preview(content) {
+  const lines = (content || '').split('\n').slice(0, 2).join(' ')
+  return lines.length > 120 ? lines.slice(0, 120) + '…' : lines || '(empty)'
+}
+
+// ---------------------------------------------------------------------------
+// Text viewer panel (full content overlay)
+// ---------------------------------------------------------------------------
+
+function TextViewerPanel({ doc, onClose }) {
+  return (
+    <div style={sv.overlay} onClick={onClose}>
+      <div style={sv.panel} onClick={(e) => e.stopPropagation()}>
+        <div style={sv.header}>
+          <div style={sv.headerLeft}>
+            <span style={{ fontSize: '1.1rem' }}>📄</span>
+            <div>
+              <div style={sv.filename}>{doc.filename}</div>
+              <div style={sv.meta}>{doc.uploaded_by}{doc.uploaded_by ? ' · ' : ''}{formatDate(doc.uploaded_at)}</div>
+            </div>
+          </div>
+          <button style={sv.closeBtn} onClick={onClose}>✕</button>
+        </div>
+        <pre style={sv.body}>{doc.content}</pre>
+      </div>
+    </div>
+  )
+}
+
+const sv = {
+  overlay: {
+    position: 'fixed', inset: 0,
+    background: 'rgba(0,0,0,.45)',
+    zIndex: 200,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  panel: {
+    background: 'var(--surface)',
+    borderRadius: 'var(--radius-lg)',
+    boxShadow: 'var(--shadow-md)',
+    width: 'min(640px, 92vw)',
+    maxHeight: '80vh',
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+  },
+  header: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    padding: '16px 20px',
+    borderBottom: '1px solid var(--border)',
+    gap: 10,
+  },
+  headerLeft: { display: 'flex', gap: 10, alignItems: 'flex-start' },
+  filename: { fontWeight: 600, fontSize: '.9375rem', color: 'var(--text)' },
+  meta: { fontSize: '.75rem', color: 'var(--text-muted)', marginTop: 2 },
+  closeBtn: {
+    background: 'transparent', border: 'none',
+    fontSize: 18, cursor: 'pointer',
+    color: 'var(--text-muted)', padding: 2, lineHeight: 1,
+    flexShrink: 0,
+  },
+  body: {
+    flex: 1,
+    overflowY: 'auto',
+    padding: '18px 20px',
+    margin: 0,
+    fontFamily: 'monospace',
+    fontSize: '.8125rem',
+    lineHeight: 1.65,
+    color: 'var(--text)',
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
+  },
+}
+
+// ---------------------------------------------------------------------------
+// Document bubble (chat message)
+// ---------------------------------------------------------------------------
+
+function DeltaBadge({ delta }) {
+  if (delta === undefined || delta === null) return null
+  const pct = Math.round(delta * 100)
+  const label = pct > 0 ? `+${pct}%` : `${pct}%`
+  const bg = delta > 0 ? 'rgba(43,172,118,.25)' : delta < 0 ? 'rgba(231,76,60,.25)' : 'rgba(255,255,255,.15)'
+  return (
+    <span style={{ fontSize: '.7rem', fontWeight: 700, padding: '1px 6px', borderRadius: 99, background: bg, color: '#fff', flexShrink: 0 }}>
+      {label}
+    </span>
+  )
+}
+
+function DocumentBubble({ doc, onView }) {
+  return (
+    <div style={sb.wrapper}>
+      <div style={sb.bubble}>
+        <div style={sb.topRow}>
+          <span style={{ fontSize: '.9rem' }}>📄</span>
+          <span style={sb.filename}>{doc.filename}</span>
+          <DeltaBadge delta={doc.delta} />
+        </div>
+        {doc.delta_rationale && (
+          <div style={{ fontSize: '.72rem', opacity: 0.85, marginBottom: 6, fontStyle: 'italic' }}>
+            {doc.delta_rationale}
+          </div>
+        )}
+        <div style={sb.divider} />
+        <div style={sb.preview}>{preview(doc.content)}</div>
+        <button style={sb.viewBtn} onClick={() => onView(doc)}>
+          View full text ›
+        </button>
+        <div style={sb.footer}>
+          {doc.uploaded_by && <span>{doc.uploaded_by} · </span>}
+          {formatDate(doc.uploaded_at)}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const sb = {
+  wrapper: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    marginBottom: 12,
+  },
+  bubble: {
+    background: 'var(--accent)',
+    color: '#fff',
+    borderRadius: '14px 14px 2px 14px',
+    padding: '10px 14px',
+    maxWidth: 320,
+    minWidth: 180,
+  },
+  topRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  filename: {
+    fontWeight: 600,
+    fontSize: '.875rem',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    flex: 1,
+  },
+  divider: {
+    height: 1,
+    background: 'rgba(255,255,255,.3)',
+    marginBottom: 8,
+  },
+  preview: {
+    fontSize: '.8125rem',
+    lineHeight: 1.5,
+    opacity: 0.92,
+    marginBottom: 8,
+    wordBreak: 'break-word',
+  },
+  viewBtn: {
+    background: 'transparent',
+    border: '1px solid rgba(255,255,255,.6)',
+    borderRadius: 6,
+    color: '#fff',
+    fontSize: '.75rem',
+    padding: '3px 8px',
+    cursor: 'pointer',
+    marginBottom: 8,
+    display: 'block',
+    width: '100%',
+    textAlign: 'center',
+  },
+  footer: {
+    fontSize: '.7rem',
+    opacity: 0.7,
+    textAlign: 'right',
+  },
+}
+
+// ---------------------------------------------------------------------------
+// Document input (composer)
+// ---------------------------------------------------------------------------
+
+function DocumentInput({ onSend }) {
+  const [filename, setFilename] = useState('')
+  const [content, setContent] = useState('')
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState(null)
+
+  const handleSend = async () => {
+    if (!content.trim() || sending) return
+    setSending(true)
+    setError(null)
+    try {
+      await onSend(filename.trim(), content.trim())
+      setFilename('')
+      setContent('')
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const handleKey = (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleSend()
+  }
+
+  return (
+    <div style={si.root}>
+      <input
+        style={si.filenameInput}
+        placeholder="Filename (optional, e.g. interview_notes)"
+        value={filename}
+        onChange={(e) => setFilename(e.target.value)}
+        disabled={sending}
+      />
+      <textarea
+        style={si.textarea}
+        placeholder="Type or paste text content… (Ctrl+Enter to send)"
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+        onKeyDown={handleKey}
+        disabled={sending}
+        rows={6}
+      />
+      {error && <div style={si.error}>{error}</div>}
+      <div style={si.footer}>
+        <span style={si.hint}>Ctrl+Enter to send</span>
+        <button
+          className="btn-primary"
+          onClick={handleSend}
+          disabled={sending || !content.trim()}
+        >
+          {sending ? 'Sending…' : 'Send'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+const si = {
+  root: {
+    borderTop: '1px solid var(--border)',
+    padding: '14px 16px',
+    background: 'var(--surface)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  filenameInput: {
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius)',
+    padding: '6px 10px',
+    fontSize: '.8125rem',
+    outline: 'none',
+    color: 'var(--text)',
+    background: 'var(--bg)',
+  },
+  textarea: {
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius)',
+    padding: '8px 10px',
+    fontSize: '.8125rem',
+    outline: 'none',
+    resize: 'vertical',
+    fontFamily: 'inherit',
+    lineHeight: 1.5,
+    color: 'var(--text)',
+    background: 'var(--bg)',
+  },
+  error: {
+    fontSize: '.8rem',
+    color: '#c0392b',
+  },
+  footer: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  hint: {
+    fontSize: '.75rem',
+    color: 'var(--text-muted)',
+  },
+}
+
+// ---------------------------------------------------------------------------
+// Main DocumentsTab
+// ---------------------------------------------------------------------------
+
+export default function DocumentsTab({ profileKey, jobKey, onGraded, onProcessingChange }) {
+  const [documents, setDocuments] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [viewingDoc, setViewingDoc] = useState(null)
+  const listRef = useRef(null)
+
+  useEffect(() => {
+    setLoading(true)
+    getExtraDocuments(profileKey, jobKey)
+      .then((data) => setDocuments(data.documents || []))
+      .catch(console.error)
+      .finally(() => setLoading(false))
+  }, [profileKey, jobKey])
+
+  useEffect(() => {
+    if (listRef.current) {
+      listRef.current.scrollTop = listRef.current.scrollHeight
+    }
+  }, [documents])
+
+  const handleSend = async (filename, content) => {
+    await uploadExtraDocument(profileKey, jobKey, filename, content)
+    const data = await getExtraDocuments(profileKey, jobKey)
+    setDocuments(data.documents || [])
+    // Auto re-grade then synthesize — onGraded owns the full chain and clears processing
+    onProcessingChange?.(profileKey, 'Grading…')
+    try {
+      const result = await gradeCandidate(jobKey, profileKey)
+      await onGraded?.(result)  // awaited: score update → synthesis → processing cleared
+    } catch (e) {
+      console.error('auto-grade failed:', e)
+      onProcessingChange?.(profileKey, null)
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+      <div ref={listRef} style={sd.list}>
+        {loading ? (
+          <div style={sd.empty}><div className="spinner" /></div>
+        ) : documents.length === 0 ? (
+          <div style={sd.empty}>
+            <div style={{ fontSize: '1.5rem', marginBottom: 8 }}>📄</div>
+            <div style={{ fontWeight: 500, marginBottom: 4 }}>No documents yet</div>
+            <div style={{ fontSize: '.8rem' }}>Send supplementary text to enrich the AI grading.</div>
+          </div>
+        ) : (
+          documents.map((doc) => (
+            <DocumentBubble key={doc.id} doc={doc} onView={setViewingDoc} />
+          ))
+        )}
+      </div>
+
+      <DocumentInput onSend={handleSend} />
+
+      {viewingDoc && (
+        <TextViewerPanel doc={viewingDoc} onClose={() => setViewingDoc(null)} />
+      )}
+    </div>
+  )
+}
+
+const sd = {
+  list: {
+    flex: 1,
+    overflowY: 'auto',
+    padding: '16px',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'flex-start',
+  },
+  empty: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: 'var(--text-muted)',
+    textAlign: 'center',
+    padding: '40px 20px',
+  },
+}

@@ -32,46 +32,56 @@ async def grade_candidate(req: GradeRequest):
     3. LLM generates synthesis — stored in profile tag
     """
     try:
-        job, profile, tracking = await _fetch_context(req.job_key, req.profile_key)
-
-        base_score = await hrflow.get_profile_score(req.job_key, req.profile_key) or 0.0
-        upskilling = await hrflow.get_job_upskilling(req.job_key, req.profile_key)
-
-        # Write base_score immediately — visible even if LLM calls fail below
-        existing_tag = hrflow.extract_tag(profile, f"job_data_{req.job_key}")
-        existing = json.loads(existing_tag) if existing_tag else {}
-        await _patch_tag(req.profile_key, profile, f"job_data_{req.job_key}", json.dumps({
-            **existing,
-            "job_key": req.job_key,
-            "base_score": base_score,
-        }))
-        print(f"[grade] base_score={base_score} written to profile tag", flush=True)
-
-        # Re-fetch profile so LLM tag write starts from fresh tags list
+        job = await hrflow.get_job(req.job_key)
         profile = await hrflow.get_profile(req.profile_key)
 
-        result = await llm.grade_candidate(job, profile, tracking or {}, base_score, upskilling)
-        final_score = result.get("final_score", base_score)
+        existing_tag = hrflow.extract_tag(profile, f"job_data_{req.job_key}")
+        existing = json.loads(existing_tag) if existing_tag else {}
+        extra_docs = hrflow.get_extra_documents(profile, req.job_key)
 
+        # Re-use cached base_score — HRFlow algorithmic score only changes when the profile
+        # itself changes, not when documents or bonuses are updated.
+        cached_base = existing.get("base_score")
+        if cached_base is not None:
+            base_score = cached_base
+            print(f"[grade] base_score={base_score} (cached, skipping HRFlow API call)", flush=True)
+        else:
+            base_score = await hrflow.get_profile_score(req.job_key, req.profile_key) or 0.0
+            # Write base_score immediately — visible even if subsequent LLM call fails
+            await _patch_tag(req.profile_key, profile, f"job_data_{req.job_key}", json.dumps({
+                **existing,
+                "job_key": req.job_key,
+                "base_score": base_score,
+            }))
+            print(f"[grade] base_score={base_score} fetched from HRFlow", flush=True)
+
+        # Score each document individually — total adjustment = sum of deltas, capped ±0.3
+        if extra_docs:
+            scored_docs = []
+            for i, doc in enumerate(extra_docs):
+                other_docs = [d for j, d in enumerate(extra_docs) if j != i]
+                score_result = await llm.score_single_document(job, profile, doc, other_docs)
+                scored_docs.append({**doc, "delta": score_result["delta"], "rationale": score_result["rationale"]})
+                print(f"[grade] doc '{doc.get('filename')}' delta={score_result['delta']} → {score_result['rationale']}", flush=True)
+            await hrflow.update_documents_with_deltas(req.profile_key, req.job_key, scored_docs)
+            ai_adjustment = round(max(-0.3, min(0.3, sum(d["delta"] for d in scored_docs))), 3)
+        else:
+            ai_adjustment = 0.0
+        print(f"[grade] total ai_adjustment={ai_adjustment}", flush=True)
+
+        # Persist updated scores — return immediately so the frontend can update the display
+        # Synthesis is triggered separately by the frontend after this response
+        profile = await hrflow.get_profile(req.profile_key)
         await _patch_tag(req.profile_key, profile, f"job_data_{req.job_key}", json.dumps({
             "job_key": req.job_key,
             "base_score": base_score,
-            "score": final_score,
+            "ai_adjustment": ai_adjustment,
             "bonus": existing.get("bonus", 0.0),
         }))
 
-        profile = await hrflow.get_profile(req.profile_key)
-
-        synthesis = await llm.synthesize_candidate(
-            job, profile, tracking or {}, upskilling, final_score
-        )
-        await _patch_tag(req.profile_key, profile, f"synthesis_{req.job_key}", json.dumps(synthesis))
-
         return {
             "base_score": base_score,
-            "final_score": final_score,
-            "rationale": result.get("rationale", ""),
-            "upskilling": upskilling,
+            "ai_adjustment": ai_adjustment,
         }
     except Exception as e:
         print(f"grade error: {e}", flush=True)

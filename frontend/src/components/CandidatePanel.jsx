@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { getCandidate, synthesizeCandidate, getStoredSynthesis, updateBonus, gradeCandidate } from '../services/api'
 import AskAssistant from './AskAssistant'
+import DocumentsTab from './DocumentsTab'
 
 function scoreBadgeClass(score) {
   if (score === null || score === undefined) return 'none'
@@ -143,7 +144,7 @@ const s = {
 
 const PIPELINE_STAGES = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired']
 
-export default function CandidatePanel({ candidateRef, job, onClose }) {
+export default function CandidatePanel({ candidateRef, job, onClose, onProcessingChange, processingStatus }) {
   const [profile, setProfile] = useState(null)
   const [synthesis, setSynthesis] = useState(null)
   const [activeTab, setActiveTab] = useState('overview')
@@ -180,11 +181,13 @@ export default function CandidatePanel({ candidateRef, job, onClose }) {
       })
       .catch(console.error)
       .finally(() => setLoadingSynth(false))
-  }, [candidateRef, job])
+  // Use stable identifiers — avoids reload when parent refreshes candidateRef object reference
+  }, [candidateRef?.profile_key, job?.key])
 
   const handleSynthesize = async () => {
     if (!job || !candidateRef || loadingSynth) return
     setLoadingSynth(true)
+    onProcessingChange?.(candidateRef.profile_key, 'Generating synthesis…')
     try {
       const data = await synthesizeCandidate(job.key, candidateRef.profile_key)
       setSynthesis(data)
@@ -193,21 +196,41 @@ export default function CandidatePanel({ candidateRef, job, onClose }) {
       console.error(e)
     } finally {
       setLoadingSynth(false)
+      onProcessingChange?.(candidateRef.profile_key, null)
     }
   }
 
   const handleGrade = async () => {
-    if (!job || !candidateRef || loadingGrade) return
+    if (!job || !candidateRef || loadingGrade || loadingSynth) return
+
+    // Phase 1: score calculation
     setLoadingGrade(true)
     setGradeError(null)
+    onProcessingChange?.(candidateRef.profile_key, 'Grading…')
+    let gradeResult
     try {
-      const result = await gradeCandidate(job.key, candidateRef.profile_key)
-      setLocalScores({ base_score: result.base_score ?? null, score: result.final_score ?? null })
+      gradeResult = await gradeCandidate(job.key, candidateRef.profile_key)
+      setLocalScores({ base_score: gradeResult.base_score ?? null, ai_adjustment: gradeResult.ai_adjustment ?? 0 })
       setActiveTab('scoring')
     } catch (e) {
       setGradeError(e.message)
-    } finally {
       setLoadingGrade(false)
+      onProcessingChange?.(candidateRef.profile_key, null)
+      return
+    }
+    setLoadingGrade(false)
+
+    // Phase 2: synthesis (score is already visible, now update synthesis)
+    setLoadingSynth(true)
+    onProcessingChange?.(candidateRef.profile_key, 'Generating synthesis…')
+    try {
+      const synth = await synthesizeCandidate(job.key, candidateRef.profile_key)
+      if (synth) setSynthesis(synth)
+    } catch (e) {
+      console.error('synthesis failed:', e)
+    } finally {
+      setLoadingSynth(false)
+      onProcessingChange?.(candidateRef.profile_key, null)
     }
   }
 
@@ -229,10 +252,10 @@ export default function CandidatePanel({ candidateRef, job, onClose }) {
   const pictureUrl = info.picture || null
   const initials = `${candidateRef.first_name?.[0] || ''}${candidateRef.last_name?.[0] || ''}`.toUpperCase() || '?'
   const fullName = `${candidateRef.first_name} ${candidateRef.last_name}`.trim()
-  const effectiveScore = localScores?.score ?? candidateRef.score ?? null
   const effectiveBaseScore = localScores?.base_score ?? candidateRef.base_score ?? null
-  const totalScore = effectiveScore !== null
-    ? Math.min(1, effectiveScore + (parseFloat(bonus) || 0))
+  const effectiveAiAdj = localScores?.ai_adjustment ?? candidateRef.ai_adjustment ?? 0
+  const totalScore = effectiveBaseScore !== null
+    ? Math.min(1, Math.max(0, effectiveBaseScore + effectiveAiAdj + (parseFloat(bonus) || 0)))
     : null
 
   const currentStageIdx = PIPELINE_STAGES.findIndex(
@@ -268,9 +291,17 @@ export default function CandidatePanel({ candidateRef, job, onClose }) {
           {/* Pipeline progress */}
           <PipelineProgress stages={PIPELINE_STAGES} currentIdx={currentStageIdx} />
 
+          {/* Processing status banner — visible regardless of active tab */}
+          {(loadingGrade || loadingSynth || processingStatus) && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '7px 20px', fontSize: '.8rem', color: 'var(--accent)', background: '#f0f4ff', borderBottom: '1px solid var(--border)', lineHeight: 1 }}>
+              <div className="spinner" style={{ width: 13, height: 13, flexShrink: 0, margin: 0 }} />
+              <span>{loadingGrade ? 'Grading…' : loadingSynth ? 'Generating synthesis…' : processingStatus}</span>
+            </div>
+          )}
+
           {/* Tabs */}
           <div style={s.tabs}>
-            {['overview', 'synthesis', 'scoring', 'resume'].map((tab) => (
+            {['overview', 'synthesis', 'scoring', 'documents', 'resume'].map((tab) => (
               <div key={tab} style={s.tab(activeTab === tab)} onClick={() => setActiveTab(tab)}>
                 {tab.charAt(0).toUpperCase() + tab.slice(1)}
               </div>
@@ -278,25 +309,48 @@ export default function CandidatePanel({ candidateRef, job, onClose }) {
           </div>
 
           {/* Body */}
-          <div style={{ ...s.body, overflow: activeTab === 'resume' ? 'hidden' : 'auto', padding: activeTab === 'resume' ? 0 : '20px' }}>
+          <div style={{ ...s.body, overflow: activeTab === 'resume' ? 'hidden' : activeTab === 'documents' ? 'hidden' : 'auto', padding: activeTab === 'resume' || activeTab === 'documents' ? 0 : '20px' }}>
             {loadingProfile ? (
               <div style={{ padding: 40, textAlign: 'center' }}><div className="spinner" /></div>
             ) : (
               <>
                 {activeTab === 'overview' && (
-                  <OverviewTab profile={profile} candidateRef={candidateRef} />
+                  <OverviewTab profile={profile} />
                 )}
                 {activeTab === 'synthesis' && (
                   <SynthesisTab synthesis={synthesis} loading={loadingSynth} />
                 )}
                 {activeTab === 'scoring' && (
                   <ScoringTab
-                    aiScore={effectiveScore}
                     hrflowScore={effectiveBaseScore}
+                    aiAdjustment={effectiveAiAdj}
                     bonus={bonus}
                     setBonus={setBonus}
                     onSaveBonus={handleBonusSave}
                     bonusSaving={bonusSaving}
+                  />
+                )}
+                {activeTab === 'documents' && (
+                  <DocumentsTab
+                    profileKey={candidateRef.profile_key}
+                    jobKey={job.key}
+                    onGraded={async (result) => {
+                      // Phase 1 done — update score display immediately
+                      setLocalScores({ base_score: result.base_score ?? null, ai_adjustment: result.ai_adjustment ?? 0 })
+                      // Phase 2 — synthesize; DocumentsTab awaits this before clearing processing
+                      onProcessingChange?.(candidateRef.profile_key, 'Generating synthesis…')
+                      setLoadingSynth(true)
+                      try {
+                        const synth = await synthesizeCandidate(job.key, candidateRef.profile_key)
+                        if (synth) setSynthesis(synth)
+                      } catch (e) {
+                        console.error('synthesis failed:', e)
+                      } finally {
+                        setLoadingSynth(false)
+                        onProcessingChange?.(candidateRef.profile_key, null)
+                      }
+                    }}
+                    onProcessingChange={onProcessingChange}
                   />
                 )}
                 {activeTab === 'resume' && (
@@ -370,8 +424,7 @@ function PipelineProgress({ stages, currentIdx }) {
   )
 }
 
-function OverviewTab({ profile, candidateRef }) {
-  const info = profile?.info || {}
+function OverviewTab({ profile }) {
   const skills = profile?.skills || []
   const experiences = profile?.experiences || []
   const educations = profile?.educations || []
@@ -467,11 +520,16 @@ function ChipSection({ title, items = [], color }) {
   )
 }
 
-function ScoringTab({ hrflowScore, aiScore, bonus, setBonus, onSaveBonus, bonusSaving }) {
-  const totalScore = aiScore !== null && aiScore !== undefined
-    ? Math.min(1, aiScore + (parseFloat(bonus) || 0))
+function ScoringTab({ hrflowScore, aiAdjustment, bonus, setBonus, onSaveBonus, bonusSaving }) {
+  const totalScore = hrflowScore !== null && hrflowScore !== undefined
+    ? Math.min(1, Math.max(0, hrflowScore + (aiAdjustment || 0) + (parseFloat(bonus) || 0)))
     : null
   const fmt = (v) => v !== null && v !== undefined ? `${Math.round(v * 100)}%` : '—'
+  const fmtAdj = (v) => {
+    if (v === null || v === undefined) return '—'
+    const pct = Math.round(v * 100)
+    return pct > 0 ? `+${pct}%` : `${pct}%`
+  }
 
   return (
     <div>
@@ -481,8 +539,8 @@ function ScoringTab({ hrflowScore, aiScore, bonus, setBonus, onSaveBonus, bonusS
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>
           {[
             { label: 'HRFlow Score', value: fmt(hrflowScore) },
-            { label: 'AI Score', value: fmt(aiScore) },
-            { label: 'HR Bonus', value: `+${Math.round((parseFloat(bonus) || 0) * 100)}%` },
+            { label: 'AI Adjustment', value: fmtAdj(aiAdjustment) },
+            { label: 'HR Bonus', value: fmtAdj(parseFloat(bonus) || 0) },
             { label: 'Total', value: fmt(totalScore), highlight: true },
           ].map((item) => (
             <div key={item.label} style={{ padding: '14px', background: item.highlight ? '#e8f4fd' : 'var(--bg)', border: `1px solid ${item.highlight ? '#b3d9f5' : 'var(--border)'}`, borderRadius: 'var(--radius-lg)', textAlign: 'center' }}>

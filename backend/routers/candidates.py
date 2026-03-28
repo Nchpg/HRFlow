@@ -14,6 +14,12 @@ class ScorePayload(BaseModel):
     bonus: float = 0.0
 
 
+class DocumentPayload(BaseModel):
+    job_key: str
+    filename: str = ""
+    content: str
+
+
 class BonusPayload(BaseModel):
     job_key: str
     bonus: float
@@ -93,17 +99,37 @@ async def update_bonus(profile_key: str, payload: BonusPayload):
         profile = await hrflow.get_profile(profile_key)
         raw_tag = hrflow.extract_tag(profile, f"job_data_{payload.job_key}")
         tag_data = json.loads(raw_tag) if raw_tag else {}
-        score = tag_data.get("score", 0.0)
-        base_score = tag_data.get("base_score")
 
         existing_tags = [t for t in profile.get("tags", []) if t.get("name") != f"job_data_{payload.job_key}"]
         new_tag = {"name": f"job_data_{payload.job_key}", "value": json.dumps({
             "job_key": payload.job_key,
-            "base_score": base_score,
-            "score": score,
+            "base_score": tag_data.get("base_score"),
+            "ai_adjustment": tag_data.get("ai_adjustment", 0.0),
             "bonus": payload.bonus,
         })}
         await hrflow.patch_profile_tags(profile_key, existing_tags + [new_tag])
-        return {"ok": True, "score": score, "bonus": payload.bonus}
+        return {"ok": True, "bonus": payload.bonus}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@router.get("/{profile_key}/documents")
+async def get_documents(profile_key: str, job_key: str):
+    """List extra HR documents attached to a candidate for a specific job."""
+    try:
+        profile = await hrflow.get_profile(profile_key)
+        return {"documents": hrflow.get_extra_documents(profile, job_key)}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@router.post("/{profile_key}/documents")
+async def add_document(profile_key: str, payload: DocumentPayload):
+    """Attach a new text document to a candidate's profile for a specific job."""
+    try:
+        doc_id = await hrflow.add_extra_document(
+            profile_key, payload.job_key, payload.filename, payload.content
+        )
+        return {"ok": True, "id": doc_id}
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))

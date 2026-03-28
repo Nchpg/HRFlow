@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { getJobCandidates, getCandidate } from '../services/api'
 import UploadResumeModal from './UploadResumeModal'
 
@@ -161,7 +161,7 @@ const s = {
   },
 }
 
-export default function JobView({ job, onSelectCandidate }) {
+export default function JobView({ job, onSelectCandidate, processingProfiles = {}, refreshKey = 0, selectedProfileKey, onCandidateRefreshed }) {
   const [candidates, setCandidates] = useState([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
@@ -169,10 +169,17 @@ export default function JobView({ job, onSelectCandidate }) {
   const [stageFilter, setStageFilter] = useState('all')
   const [showUpload, setShowUpload] = useState(false)
 
+  // Refs so fetchCandidates can read current values without being a dependency
+  const selectedProfileKeyRef = useRef(selectedProfileKey)
+  const onCandidateRefreshedRef = useRef(onCandidateRefreshed)
+  useEffect(() => { selectedProfileKeyRef.current = selectedProfileKey }, [selectedProfileKey])
+  useEffect(() => { onCandidateRefreshedRef.current = onCandidateRefreshed }, [onCandidateRefreshed])
+
   const fetchCandidates = useCallback(async () => {
     if (!job) return
     setLoading(true)
     try {
+      void refreshKey  // dependency — triggers refetch when a grade/synthesis completes
       const data = await getJobCandidates(job.key)
       let list = data.candidates || []
       const fetchedKeys = new Set(list.map((c) => c.profile_key))
@@ -203,12 +210,17 @@ export default function JobView({ job, onSelectCandidate }) {
       )
       setPendingKeys(job.key, stillPending)
       setCandidates(list)
+      // Keep selectedCandidate in DashboardPage in sync with freshly fetched scores
+      if (selectedProfileKeyRef.current) {
+        const updated = list.find((c) => c.profile_key === selectedProfileKeyRef.current)
+        if (updated) onCandidateRefreshedRef.current?.(updated)
+      }
     } catch (e) {
       console.error(e)
     } finally {
       setLoading(false)
     }
-  }, [job])
+  }, [job, refreshKey])
 
   useEffect(() => {
     fetchCandidates()
@@ -309,6 +321,12 @@ export default function JobView({ job, onSelectCandidate }) {
                         </div>
                         <div>
                           <div style={{ fontWeight: 500 }}>{c.first_name} {c.last_name}</div>
+                          {processingProfiles[c.profile_key] && (
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '.7rem', color: 'var(--accent)', marginTop: 2 }}>
+                              <div className="spinner" style={{ width: 9, height: 9 }} />
+                              {processingProfiles[c.profile_key]}
+                            </div>
+                          )}
                           {c.email && <div style={{ fontSize: '.75rem', color: 'var(--text-muted)' }}>{c.email}</div>}
                         </div>
                       </div>

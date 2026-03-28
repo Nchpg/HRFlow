@@ -108,8 +108,8 @@ async def get_job_candidates(job_key: str):
         if not profile_key:
             continue
 
-        score = None
         base_score = None
+        ai_adjustment = 0.0
         bonus = 0.0
 
         try:
@@ -118,12 +118,14 @@ async def get_job_candidates(job_key: str):
             raw_tag = hrflow.extract_tag(profile, f"job_data_{job_key}")
             if raw_tag:
                 tag_data = json.loads(raw_tag)
-                score = tag_data.get("score")
                 base_score = tag_data.get("base_score")
+                ai_adjustment = tag_data.get("ai_adjustment", 0.0)
                 bonus = tag_data.get("bonus", 0.0)
         except Exception:
             profile = {}
             info = tracking.get("profile", {}).get("info", {})
+
+        score = (base_score + ai_adjustment) if base_score is not None else None
 
         candidates.append(
             {
@@ -133,6 +135,7 @@ async def get_job_candidates(job_key: str):
                 "email": info.get("email", ""),
                 "picture": info.get("picture", ""),
                 "base_score": base_score,
+                "ai_adjustment": ai_adjustment,
                 "score": score,
                 "bonus": bonus,
                 "stage": tracking.get("action") or tracking.get("stage", ""),
