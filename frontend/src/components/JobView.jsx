@@ -189,14 +189,28 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
             const profile = await getCandidate(key)
             if (profile?.key) {
               const info = profile.info || {}
+              const scoreTag = (profile.tags || []).find(t => t.name === `job_data_${job.key}`)
+              let score = null, base_score = null, ai_adjustment = 0, bonus = 0
+              if (scoreTag) {
+                try {
+                  const d = JSON.parse(scoreTag.value)
+                  base_score = d.base_score ?? null
+                  ai_adjustment = d.ai_adjustment ?? 0
+                  bonus = d.bonus ?? 0
+                  if (base_score !== null) score = base_score + ai_adjustment
+                } catch (e) {}
+              }
+
               list = [...list, {
                 profile_key: key,
                 first_name: info.first_name || '',
                 last_name: info.last_name || '',
                 email: info.email || '',
                 picture: info.picture || '',
-                score: null,
-                bonus: 0,
+                base_score,
+                ai_adjustment,
+                score,
+                bonus,
                 stage: 'applied',
               }]
               stillPending.push(key)
@@ -218,9 +232,10 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
   }, [job, refreshKey])
 
   useEffect(() => {
+    setCandidates([]) // Clear previous candidates immediately when job changes
     fetchCandidates()
     setLocalStatus(job?.status || 'open')
-  }, [fetchCandidates, job?.status])
+  }, [fetchCandidates, job?.key, job?.status])
 
   useEffect(() => {
     if (!candidateOverride) return
@@ -346,7 +361,7 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
           <div style={{ padding: 40, textAlign: 'center' }}>
             <div className="spinner" />
           </div>
-        ) : sorted.length === 0 ? (
+        ) : (candidates.length === 0) ? (
           <div style={s.empty}>No candidates found</div>
         ) : (
           <table style={s.table}>

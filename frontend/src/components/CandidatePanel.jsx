@@ -193,7 +193,21 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
     setCurrentStage(candidateRef.stage || 'applied')
 
     getCandidate(candidateRef.profile_key)
-      .then(setProfile)
+      .then(p => {
+        setProfile(p)
+        // If candidateRef was missing score/bonus (e.g. newly added), try to get from tags
+        const scoreTag = (p.tags || []).find(t => t.name === `job_data_${job.key}`)
+        if (scoreTag) {
+          try {
+            const d = JSON.parse(scoreTag.value)
+            if (d.bonus !== undefined && d.bonus !== null && !candidateRef.bonus) {
+              const b = Math.round(d.bonus * 100)
+              setBonus(b)
+              setSavedBonus(b)
+            }
+          } catch (e) {}
+        }
+      })
       .catch(console.error)
       .finally(() => setLoadingProfile(false))
 
@@ -248,8 +262,18 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
   const pictureUrl = info.picture || null
   const initials = `${candidateRef.first_name?.[0] || ''}${candidateRef.last_name?.[0] || ''}`.toUpperCase() || '?'
   const fullName = `${candidateRef.first_name} ${candidateRef.last_name}`.trim()
-  const effectiveBaseScore = localScores?.base_score ?? candidateRef.base_score ?? null
-  const effectiveAiAdj = localScores?.ai_adjustment ?? candidateRef.ai_adjustment ?? 0
+  const scoreTag = (profile?.tags || []).find(t => t.name === `job_data_${job?.key}`)
+  let tagBase = null, tagAi = 0
+  if (scoreTag) {
+    try {
+      const d = JSON.parse(scoreTag.value)
+      tagBase = d.base_score ?? null
+      tagAi = d.ai_adjustment ?? 0
+    } catch (e) {}
+  }
+
+  const effectiveBaseScore = localScores?.base_score ?? candidateRef.base_score ?? tagBase
+  const effectiveAiAdj = localScores?.ai_adjustment ?? candidateRef.ai_adjustment ?? tagAi
   const totalScore = effectiveBaseScore !== null
     ? Math.min(1, Math.max(0, effectiveBaseScore + effectiveAiAdj + savedBonus / 100))
     : null
