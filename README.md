@@ -1,69 +1,89 @@
-# HRFlow Assistant
+# HEpiR — HR Evolution
 
-AI-powered recruitment platform for continuous candidate tracking, automated scoring, and intelligent document processing.
+> AI-powered recruitment dashboard that ranks, analyses, and synthesises candidate applications in real time.
 
 ## What it does
 
-HRFlow Assistant provides a comprehensive dashboard to **track candidates continuously** throughout the recruitment lifecycle. It simplifies decision-making by allowing recruiters to:
+HEpiR connects to the HrFlow.ai API to give HR teams a unified view of every job opening and its applicants. Drop a PDF resume into a job, and the system instantly scores the candidate against the role, generates a structured AI synthesis (strengths, weaknesses, upskilling recommendations), and lets HR attach supplementary documents — interview notes, technical test transcripts, audio recordings — that feed directly back into the scoring model.
 
-- **Continuous Tracking:** Manage candidates through customizable recruitment stages (Applied, Screening, Interview, Technical Test, etc.) and monitor their progress in real-time.
-- **Stage-Based Scoring:** Assign and adjust candidate scores based on feedback and results gathered at **each specific stage** of the process.
-- **Automated Grading:** Re-evaluates candidates by cross-referencing their CV with supplementary evidence provided during the follow-up.
-- **Smart Synthesis:** Generates concise recruitment summaries highlighting strengths, weaknesses, and potential contradictions found across all documents.
-- **Document Intelligence:** Extracts text from PDF/Word documents and **transcribes audio interviews (MP3, M4A, etc.)** using OpenRouter to enrich the candidate's profile evaluation.
+Key capabilities:
+- **Ranked candidate list** per job, scored by HrFlow's native matching engine combined with an LLM adjustment layer
+- **AI synthesis** — structured summary, strengths, weaknesses, upskilling recommendations, and a hire verdict, auto-generated on upload and refreshable on demand
+- **Extra documents** — attach plain text, PDF, DOCX, or audio files to any candidate; each document is individually scored by the LLM and contributes a delta to the total score
+- **Interview question generator** — tailored questions based on the candidate's profile and attached documents
+- **Recruitment pipeline** — customisable stages per job (Screening, Interview, Technical Test, …) with real-time stage tracking
+- **HR bonus** — manual score adjustment (±) on top of the AI score
+- **Job management** — create jobs, set operational status (Open / On Hold / Closed), manage custom pipeline stages
 
 ## HrFlow.ai APIs used
 
-- `GET /v1/jobs/searching` — Retrieve and list available jobs.
-- `GET /v1/job/indexing` — Fetch detailed job specifications.
-- `GET /v1/profile/indexing` — Retrieve full candidate profile data.
-- `PUT /v1/profile/indexing` — Update profiles with AI scores (tags), stages, and transcripts (metadatas).
-- `POST /v1/profile/parsing/file` — Parse resumes to create structured candidate profiles.
-- `GET /v1/trackings` — Manage candidate applications and stage history.
-- `GET /v1/job/upskilling` — Identify skill gaps and strengths relative to the job.
+| Endpoint | Usage |
+|----------|-------|
+| `POST /v1/profile/parsing/file` | Parse a PDF resume and create a candidate profile |
+| `GET /v1/profile/indexing` | Fetch a full candidate profile (skills, experiences, tags, metadata) |
+| `PUT /v1/profile/indexing` | Store scores, synthesis, stage, and extra documents in profile tags/metadata |
+| `POST /v1/tracking/indexing` | Link a candidate profile to a job (creates the application) |
+| `GET /v1/tracking/searching` | List all candidates who applied to a given job |
+| `GET /v1/job/indexing` | Fetch a single job's full data |
+| `POST /v1/job/indexing` | Create a new job in the board |
+| `GET /v1/job/searching` | List all jobs in the board |
+| `POST /v1/score/searching` | Compute HrFlow's native matching score between a profile and a job |
 
 ## How to run
 
 ### Prerequisites
 
-- **Docker & Docker Compose**
+- Docker & Docker Compose
+- An [HrFlow.ai](https://hrflow.ai) account with an API key, source key, and board key
+- An [OpenRouter](https://openrouter.ai) API key (or any OpenAI-compatible LLM endpoint)
 
 ### Setup
 
-1. **Configure Environment:**
-   ```bash
-   cp .env.example .env
-   # Fill in your actual API keys in the .env file
-   ```
+```bash
+# Clone the repo
+git clone <repo-url>
+cd HEpiR-HREvolution
 
-2. **Start the app:**
-   ```bash
-   docker-compose up --build
-   ```
-   *This command handles dependency installation and starts both the backend and frontend services.*
+# Copy and fill in credentials
+cp .env.example .env
+# Edit .env with your actual keys
 
-3. **Access the application:**
-   - Frontend: [http://localhost:3000](http://localhost:3000)
-   - Backend API: [http://localhost:8080](http://localhost:8080)
+# Build and start the full stack
+docker compose up --build
+```
 
-## Environment variables
+- **Frontend** → http://localhost:3000
+- **API / Swagger UI** → http://localhost:8080/docs
+
+### Environment variables
 
 | Variable | Required | Description |
-| :--- | :--- | :--- |
+|----------|----------|-------------|
 | `HRFLOW_API_KEY` | Yes | HrFlow.ai API secret key |
-| `HRFLOW_USER_EMAIL` | Yes | Your HrFlow account email |
-| `HRFLOW_SOURCE_KEY` | Yes | HrFlow.ai source key for candidates |
-| `HRFLOW_BOARD_KEY` | Yes | HrFlow.ai board key for jobs |
-| `LLM_API_KEY` | Yes | OpenRouter API key |
-| `LLM_BASE_URL` | Yes | LLM API base URL (OpenRouter) |
-| `LLM_MODEL` | Yes | AI model for grading and transcription |
+| `HRFLOW_USER_EMAIL` | Yes | HrFlow.ai account email |
+| `HRFLOW_SOURCE_KEY` | Yes | HrFlow.ai source key (profile storage) |
+| `HRFLOW_BOARD_KEY` | Yes | HrFlow.ai board key (job storage) |
+| `LLM_API_KEY` | Yes | OpenRouter (or compatible) API key |
+| `LLM_BASE_URL` | Yes | LLM base URL (default: `https://openrouter.ai/api/v1`) |
+| `LLM_MODEL` | Yes | Model for grading/synthesis (e.g. `nvidia/nemotron-super-49b-v1:free`) |
 
-## Screenshots
+## Architecture
 
-### Preview
-*Add your screenshots here to showcase the dashboard and the new document upload/transcription panel.*
+```
+frontend/   React 18 + Vite — dashboard UI
+backend/    Python 3.12 + FastAPI — orchestration layer
+            ├── routers/jobs.py         job CRUD + stage pipeline
+            ├── routers/candidates.py   profile, score, documents, file upload
+            ├── routers/ai.py           grading, synthesis, interview questions
+            └── services/
+                ├── hrflow.py           HrFlow API client
+                └── llm.py              OpenRouter LLM calls
+```
+
+No local database — HrFlow is the single source of truth. Scores, synthesis, and extra documents are stored directly in profile tags and metadata.
 
 ## Team
 
-- **Team Lead** — Lead
-- **Developer** — Developer
+- **Adrien CAPITAINE** — Developer
+- **Nathan CHAMPAGNE** — Developer
+- **Joris BELY** — Developer
