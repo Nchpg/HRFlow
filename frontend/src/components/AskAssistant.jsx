@@ -61,17 +61,38 @@ const s = {
   }),
 }
 
-export default function AskAssistant({ job, candidateRef, onClose }) {
+export default function AskAssistant({ job, candidateRef, onClose, inline = false }) {
   const [questions, setQuestions] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
   useEffect(() => {
+    setLoading(true)
+    setQuestions([])
+    setError(null)
     askQuestions(job.key, candidateRef.profile_key)
       .then((data) => setQuestions(data.questions || []))
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [job, candidateRef])
+  }, [job.key, candidateRef.profile_key])
+
+  const questionList = (
+    <>
+      {loading && <div style={{ textAlign: 'center', padding: 40 }}><div className="spinner" /></div>}
+      {error && <div style={{ color: 'var(--score-low)', padding: 20 }}>Error: {error}</div>}
+      {!loading && !error && questions.length === 0 && (
+        <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 30 }}>No questions generated.</div>
+      )}
+      {questions.map((q, i) => (
+        <div key={i} style={{ ...s.question, background: CATEGORY_COLOR[q.category] || '#f5f5f5' }}>
+          <div style={s.categoryBadge(q.category)}>{q.category}</div>
+          <div>{q.question}</div>
+        </div>
+      ))}
+    </>
+  )
+
+  if (inline) return questionList
 
   const candidateName = `${candidateRef.first_name} ${candidateRef.last_name}`.trim()
 
@@ -84,19 +105,7 @@ export default function AskAssistant({ job, candidateRef, onClose }) {
           <button style={s.close} onClick={onClose}>✕</button>
         </div>
 
-        <div style={s.body}>
-          {loading && <div style={{ textAlign: 'center', padding: 40 }}><div className="spinner" /></div>}
-          {error && <div style={{ color: 'var(--score-low)', padding: 20 }}>Error: {error}</div>}
-          {!loading && !error && questions.length === 0 && (
-            <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 30 }}>No questions generated.</div>
-          )}
-          {questions.map((q, i) => (
-            <div key={i} style={{ ...s.question, background: CATEGORY_COLOR[q.category] || '#f5f5f5' }}>
-              <div style={s.categoryBadge(q.category)}>{q.category}</div>
-              <div>{q.question}</div>
-            </div>
-          ))}
-        </div>
+        <div style={s.body}>{questionList}</div>
       </div>
     </div>
   )

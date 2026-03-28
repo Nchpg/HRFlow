@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getCandidate, synthesizeCandidate, getStoredSynthesis, updateBonus, gradeCandidate } from '../services/api'
+import { getCandidate, synthesizeCandidate, getStoredSynthesis, updateBonus } from '../services/api'
 import AskAssistant from './AskAssistant'
 import DocumentsTab from './DocumentsTab'
 
@@ -133,13 +133,6 @@ const s = {
     fontSize: '.8rem',
     outline: 'none',
   },
-  actionRow: {
-    display: 'flex',
-    gap: 8,
-    padding: '14px 20px',
-    borderTop: '1px solid var(--border)',
-    background: 'var(--surface)',
-  },
 }
 
 const PIPELINE_STAGES = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired']
@@ -152,10 +145,7 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
   const [loadingSynth, setLoadingSynth] = useState(false)
   const [bonus, setBonus] = useState(candidateRef?.bonus || 0)
   const [bonusSaving, setBonusSaving] = useState(false)
-  const [loadingGrade, setLoadingGrade] = useState(false)
-  const [gradeError, setGradeError] = useState(null)
   const [localScores, setLocalScores] = useState(null)
-  const [showAsk, setShowAsk] = useState(false)
 
   useEffect(() => {
     if (!candidateRef || !job) return
@@ -183,56 +173,6 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
       .finally(() => setLoadingSynth(false))
   // Use stable identifiers — avoids reload when parent refreshes candidateRef object reference
   }, [candidateRef?.profile_key, job?.key])
-
-  const handleSynthesize = async () => {
-    if (!job || !candidateRef || loadingSynth) return
-    setLoadingSynth(true)
-    onProcessingChange?.(candidateRef.profile_key, 'Generating synthesis…')
-    try {
-      const data = await synthesizeCandidate(job.key, candidateRef.profile_key)
-      setSynthesis(data)
-      setActiveTab('synthesis')
-    } catch (e) {
-      console.error(e)
-    } finally {
-      setLoadingSynth(false)
-      onProcessingChange?.(candidateRef.profile_key, null)
-    }
-  }
-
-  const handleGrade = async () => {
-    if (!job || !candidateRef || loadingGrade || loadingSynth) return
-
-    // Phase 1: score calculation
-    setLoadingGrade(true)
-    setGradeError(null)
-    onProcessingChange?.(candidateRef.profile_key, 'Grading…')
-    let gradeResult
-    try {
-      gradeResult = await gradeCandidate(job.key, candidateRef.profile_key)
-      setLocalScores({ base_score: gradeResult.base_score ?? null, ai_adjustment: gradeResult.ai_adjustment ?? 0 })
-      setActiveTab('scoring')
-    } catch (e) {
-      setGradeError(e.message)
-      setLoadingGrade(false)
-      onProcessingChange?.(candidateRef.profile_key, null)
-      return
-    }
-    setLoadingGrade(false)
-
-    // Phase 2: synthesis (score is already visible, now update synthesis)
-    setLoadingSynth(true)
-    onProcessingChange?.(candidateRef.profile_key, 'Generating synthesis…')
-    try {
-      const synth = await synthesizeCandidate(job.key, candidateRef.profile_key)
-      if (synth) setSynthesis(synth)
-    } catch (e) {
-      console.error('synthesis failed:', e)
-    } finally {
-      setLoadingSynth(false)
-      onProcessingChange?.(candidateRef.profile_key, null)
-    }
-  }
 
   const handleBonusSave = async () => {
     if (!job || !candidateRef) return
@@ -292,16 +232,16 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
           <PipelineProgress stages={PIPELINE_STAGES} currentIdx={currentStageIdx} />
 
           {/* Processing status banner — visible regardless of active tab */}
-          {(loadingGrade || loadingSynth || processingStatus) && (
+          {(loadingSynth || processingStatus) && (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '7px 20px', fontSize: '.8rem', color: 'var(--accent)', background: '#f0f4ff', borderBottom: '1px solid var(--border)', lineHeight: 1 }}>
               <div className="spinner" style={{ width: 13, height: 13, flexShrink: 0, margin: 0 }} />
-              <span>{loadingGrade ? 'Grading…' : loadingSynth ? 'Generating synthesis…' : processingStatus}</span>
+              <span>{loadingSynth ? 'Generating synthesis…' : processingStatus}</span>
             </div>
           )}
 
           {/* Tabs */}
           <div style={s.tabs}>
-            {['overview', 'synthesis', 'scoring', 'documents', 'resume'].map((tab) => (
+            {['overview', 'synthesis', 'scoring', 'documents', 'resume', 'ask'].map((tab) => (
               <div key={tab} style={s.tab(activeTab === tab)} onClick={() => setActiveTab(tab)}>
                 {tab.charAt(0).toUpperCase() + tab.slice(1)}
               </div>
@@ -309,7 +249,7 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
           </div>
 
           {/* Body */}
-          <div style={{ ...s.body, overflow: activeTab === 'resume' ? 'hidden' : activeTab === 'documents' ? 'hidden' : 'auto', padding: activeTab === 'resume' || activeTab === 'documents' ? 0 : '20px' }}>
+          <div style={{ ...s.body, overflow: activeTab === 'resume' || activeTab === 'documents' ? 'hidden' : 'auto', padding: activeTab === 'resume' || activeTab === 'documents' ? 0 : '20px' }}>
             {loadingProfile ? (
               <div style={{ padding: 40, textAlign: 'center' }}><div className="spinner" /></div>
             ) : (
@@ -356,37 +296,14 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
                 {activeTab === 'resume' && (
                   <ResumeTab profile={profile} />
                 )}
+                {activeTab === 'ask' && (
+                  <AskAssistant job={job} candidateRef={candidateRef} inline />
+                )}
               </>
             )}
           </div>
-
-          {/* Actions */}
-          <div style={s.actionRow}>
-            <button className="btn-primary" onClick={handleGrade} disabled={loadingGrade}>
-              {loadingGrade ? '⏳ Grading…' : '📊 Grade'}
-            </button>
-            <button className="btn-ghost" onClick={handleSynthesize} disabled={loadingSynth}>
-              {loadingSynth ? '⏳ Generating…' : synthesis ? '🔄 Re-generate' : '📄 Synthesize'}
-            </button>
-            <button className="btn-ghost" onClick={() => setShowAsk(true)}>
-              💬 Ask
-            </button>
-          </div>
-          {gradeError && (
-            <div style={{ padding: '6px 20px', fontSize: '.8rem', color: '#c0392b', borderTop: '1px solid var(--border)' }}>
-              Grade failed: {gradeError}
-            </div>
-          )}
         </div>
       </div>
-
-      {showAsk && job && (
-        <AskAssistant
-          job={job}
-          candidateRef={candidateRef}
-          onClose={() => setShowAsk(false)}
-        />
-      )}
     </>
   )
 }
@@ -478,7 +395,7 @@ function SynthesisTab({ synthesis, loading }) {
   if (loading) return <div style={{ textAlign: 'center', padding: 40 }}><div className="spinner" /></div>
   if (!synthesis) return (
     <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 40 }}>
-      Click <strong>Synthesize</strong> to generate an AI summary for this candidate.
+      AI synthesis will appear here once generated.
     </div>
   )
   return (
