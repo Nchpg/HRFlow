@@ -111,10 +111,12 @@ async def get_job_candidates(job_key: str):
 
         # Try in-memory score cache first (avoids HRFlow tag indexing delay)
         score = None
+        base_score = None
         bonus = 0.0
         cached_score = _score_cache.get(_cache_key(job_key, profile_key))
         if cached_score:
             score = cached_score.get("score")
+            base_score = cached_score.get("base_score")
             bonus = cached_score.get("bonus", 0.0)
 
         try:
@@ -124,6 +126,7 @@ async def get_job_candidates(job_key: str):
                 if raw_tag:
                     tag_data = json.loads(raw_tag)
                     score = tag_data.get("score")
+                    base_score = tag_data.get("base_score")
                     bonus = tag_data.get("bonus", 0.0)
             info = profile.get("info", {})
         except Exception:
@@ -138,6 +141,7 @@ async def get_job_candidates(job_key: str):
                 "last_name": info.get("last_name", ""),
                 "email": info.get("email", ""),
                 "picture": info.get("picture", ""),
+                "base_score": base_score,
                 "score": score,
                 "bonus": bonus,
                 "stage": tracking.get("action") or tracking.get("stage", ""),

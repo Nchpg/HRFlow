@@ -48,13 +48,13 @@ async def grade_candidate(req: GradeRequest):
         final_score = result.get("final_score", base_score)
 
         # Cache score immediately (HRFlow tag indexing delay workaround)
-        _score_cache[_cache_key(req.job_key, req.profile_key)] = {"score": final_score, "bonus": 0.0}
+        _score_cache[_cache_key(req.job_key, req.profile_key)] = {"base_score": base_score, "score": final_score, "bonus": 0.0}
 
         # Persist score tag
         await _patch_tag(
             req.profile_key, profile,
             f"job_data_{req.job_key}",
-            json.dumps({"job_key": req.job_key, "score": final_score, "bonus": 0.0}),
+            json.dumps({"job_key": req.job_key, "base_score": base_score, "score": final_score, "bonus": 0.0}),
         )
 
         # Re-fetch profile so synthesis tag write starts from fresh tags list

@@ -438,21 +438,24 @@ function ChipSection({ title, items = [], color }) {
 }
 
 function ScoringTab({ candidateRef, bonus, setBonus, onSaveBonus, bonusSaving }) {
-  const base = candidateRef.score
-  const totalScore = base !== null && base !== undefined
-    ? Math.min(1, (base || 0) + (parseFloat(bonus) || 0))
+  const hrflowScore = candidateRef.base_score ?? null
+  const aiScore = candidateRef.score ?? null
+  const totalScore = aiScore !== null
+    ? Math.min(1, aiScore + (parseFloat(bonus) || 0))
     : null
+  const fmt = (v) => v !== null && v !== undefined ? `${Math.round(v * 100)}%` : '—'
 
   return (
     <div>
       <div style={{ marginBottom: 20 }}>
         <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 12 }}>Score breakdown</div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>
           {[
-            { label: 'Base score', value: base !== null && base !== undefined ? `${Math.round((base) * 100)}%` : '—' },
-            { label: 'Bonus', value: `+${Math.round((parseFloat(bonus) || 0) * 100)}%` },
-            { label: 'Total', value: totalScore !== null ? `${Math.round(totalScore * 100)}%` : '—', highlight: true },
+            { label: 'HRFlow Score', value: fmt(hrflowScore) },
+            { label: 'AI Score', value: fmt(aiScore) },
+            { label: 'HR Bonus', value: `+${Math.round((parseFloat(bonus) || 0) * 100)}%` },
+            { label: 'Total', value: fmt(totalScore), highlight: true },
           ].map((item) => (
             <div key={item.label} style={{ padding: '14px', background: item.highlight ? '#e8f4fd' : 'var(--bg)', border: `1px solid ${item.highlight ? '#b3d9f5' : 'var(--border)'}`, borderRadius: 'var(--radius-lg)', textAlign: 'center' }}>
               <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginBottom: 4 }}>{item.label}</div>

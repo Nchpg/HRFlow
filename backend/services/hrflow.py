@@ -148,20 +148,19 @@ async def get_tracking(job_key: str, profile_key: str) -> dict | None:
 # ---------------------------------------------------------------------------
 
 async def get_profile_score(job_key: str, profile_key: str) -> float | None:
-    """Return the HRFlow base score for a profile against a job.
+    """Return the HRFlow grading score for a profile against a job.
     Returns None (non-fatal) on 400/404 — profile may not be indexed yet.
     """
     async with httpx.AsyncClient() as client:
         r = await client.get(
-            f"{BASE_URL}/profiles/scoring",
+            f"{BASE_URL}/profile/grading",
             headers=_headers(),
             params={
                 "board_key": settings.hrflow_board_key,
-                "source_keys": f'["{settings.hrflow_source_key}"]',
-                "algorithm_key": "b1ebac4c62fa96e06206f4433b95ae69674891ff",
+                "source_key": settings.hrflow_source_key,
+                "algorithm_key": "grader-hrflow-profiles",
                 "job_key": job_key,
                 "profile_key": profile_key,
-                "limit": 1,
             },
             timeout=20,
         )
@@ -169,8 +168,10 @@ async def get_profile_score(job_key: str, profile_key: str) -> float | None:
         print(f"[get_profile_score] {r.status_code} {r.text[:200]}", flush=True)
         return None
     r.raise_for_status()
-    profiles = r.json().get("data", {}).get("profiles", [])
-    return profiles[0].get("score") if profiles else None
+    data = r.json()
+    score = data.get("data", {}).get("score")
+    print(f"[get_profile_score] score={score}", flush=True)
+    return score
 
 
 async def get_job_upskilling(job_key: str, profile_key: str) -> dict:
