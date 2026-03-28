@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { getJobCandidates, getCandidate, gradeCandidate, synthesizeCandidate } from '../services/api'
 import UploadResumeModal from './UploadResumeModal'
+import JobInfoModal from './JobInfoModal'
 
 function lsKey(jobKey) { return `hrflow_pending_candidates_${jobKey}` }
 function getPendingKeys(jobKey) {
@@ -168,6 +169,7 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
   const [hovered, setHovered] = useState(null)
   const [stageFilter, setStageFilter] = useState('all')
   const [showUpload, setShowUpload] = useState(false)
+  const [showJobInfo, setShowJobInfo] = useState(false)
 
   // Refs so fetchCandidates can read current values without being a dependency
   const selectedProfileKeyRef = useRef(selectedProfileKey)
@@ -250,7 +252,14 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
   return (
     <div style={s.root}>
       <div style={s.toolbar}>
-        <div style={s.title}>{job.name || job.key}</div>
+        <div style={{ ...s.title, display: 'flex', alignItems: 'center', gap: 10 }}>
+          {job.name || job.key}
+          <button 
+            style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 16, opacity: 0.6, padding: 4 }}
+            onClick={() => setShowJobInfo(true)}
+            title="View job details"
+          >ℹ️</button>
+        </div>
 
         <div style={s.searchWrap}>
           <span style={s.searchIcon}>⌕</span>
@@ -377,6 +386,13 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
               })()
             }
           }}
+        />
+      )}
+
+      {showJobInfo && (
+        <JobInfoModal
+          job={job}
+          onClose={() => setShowJobInfo(false)}
         />
       )}
     </div>
