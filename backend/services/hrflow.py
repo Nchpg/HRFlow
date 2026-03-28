@@ -103,12 +103,13 @@ async def list_trackings(job_key: str) -> list[dict]:
     """Return all trackings for a given job. Returns [] when none exist."""
     async with httpx.AsyncClient() as client:
         r = await client.get(
-            f"{BASE_URL}/tracking/list",
+            f"{BASE_URL}/trackings",
             headers=_headers(),
             params={
+                "role": "candidate",
                 "board_key": settings.hrflow_board_key,
-                "source_keys": f'["{settings.hrflow_source_key}"]',
                 "job_key": job_key,
+                "source_keys": f'["{settings.hrflow_source_key}"]',
                 "limit": 100,
             },
             timeout=15,
@@ -119,14 +120,25 @@ async def list_trackings(job_key: str) -> list[dict]:
             print(f"list_trackings {job_key} → {r.status_code}: {r.text}", flush=True)
             return []
         data = r.json()
-        return (data.get("data") or {}).get("trackings", [])
+        
+        # Normalize the response structure
+        # The new endpoint returns the list in 'data' directly.
+        # The old endpoint returned it in 'data.trackings'.
+        data_content = data.get("data")
+        if isinstance(data_content, list):
+            return data_content
+        if isinstance(data_content, dict):
+            return data_content.get("trackings") or []
+        return []
 
 
 async def get_tracking(job_key: str, profile_key: str) -> dict | None:
     """Return the tracking linking a candidate to a specific job."""
     trackings = await list_trackings(job_key)
     for t in trackings:
-        if t.get("profile", {}).get("key") == profile_key:
+        # Check both old (nested) and new (top-level) profile_key formats
+        p_key = t.get("profile_key") or t.get("profile", {}).get("key")
+        if p_key == profile_key:
             return t
     return None
 

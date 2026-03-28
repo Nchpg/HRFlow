@@ -73,7 +73,7 @@ Writable fields: `reference`, `info`, `text`, `summary`, `cover_letter`, `experi
 
 | Action | Method | Endpoint |
 |--------|--------|----------|
-| List trackings for a job | `GET` | `/v1/tracking/list?board_key={key}&source_keys=["{key}"]&job_key={job_key}&limit=100` |
+| List trackings for a job | `GET` | `/v1/trackings?role=candidate&board_key={key}&source_keys=["{key}"]&job_key={job_key}&limit=100` |
 | Create tracking | `POST` | `/v1/tracking` |
 
 **Create tracking payload:**

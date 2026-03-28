@@ -19,7 +19,7 @@ All LLM calls use the OpenAI-compatible SDK (`openai.AsyncOpenAI`), `temperature
 ```
 1. fetch job         → GET /v1/job/indexing
 2. fetch profile     → GET /v1/profile/indexing
-3. fetch tracking    → GET /v1/tracking/list  (cover letter, quiz answers)
+3. fetch tracking    → GET /v1/trackings  (cover letter, quiz answers)
 4. fetch base score  → GET /v1/profiles/scoring
 5. fetch upskilling  → GET /v1/job/upskilling  (strengths, weaknesses, skill_gaps)
 6. LLM call          → adjusted final_score + rationale

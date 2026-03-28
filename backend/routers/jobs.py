@@ -105,8 +105,7 @@ async def get_job_candidates(job_key: str):
 
     candidates = []
     for tracking in trackings:
-        profile_ref = tracking.get("profile", {})
-        profile_key = profile_ref.get("key")
+        profile_key = tracking.get("profile_key") or tracking.get("profile", {}).get("key")
         if not profile_key:
             continue
 
@@ -129,7 +128,8 @@ async def get_job_candidates(job_key: str):
             info = profile.get("info", {})
         except Exception:
             profile = {}
-            info = profile_ref.get("info", {})
+            # Fallback to info provided in the tracking if return_profile was true or included in basic list
+            info = tracking.get("profile", {}).get("info", {})
 
         candidates.append(
             {
@@ -140,7 +140,7 @@ async def get_job_candidates(job_key: str):
                 "picture": info.get("picture", ""),
                 "score": score,
                 "bonus": bonus,
-                "stage": tracking.get("stage", ""),
+                "stage": tracking.get("action") or tracking.get("stage", ""),
                 "tracking_key": tracking.get("key", ""),
             }
         )
