@@ -4,7 +4,6 @@ import json
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from services import hrflow
-from routers.ai import _score_cache, _cache_key
 
 router = APIRouter()
 
@@ -93,19 +92,18 @@ async def update_bonus(profile_key: str, payload: BonusPayload):
     try:
         profile = await hrflow.get_profile(profile_key)
         raw_tag = hrflow.extract_tag(profile, f"job_data_{payload.job_key}")
-        if raw_tag:
-            tag_data = json.loads(raw_tag)
-            score = tag_data.get("score", 0.0)
-        else:
-            score = 0.0
+        tag_data = json.loads(raw_tag) if raw_tag else {}
+        score = tag_data.get("score", 0.0)
+        base_score = tag_data.get("base_score")
 
-        existing_tags = [
-            t for t in profile.get("tags", [])
-            if t.get("name") != f"job_data_{payload.job_key}"
-        ]
-        new_tag = hrflow.build_job_tag(payload.job_key, score, payload.bonus)
+        existing_tags = [t for t in profile.get("tags", []) if t.get("name") != f"job_data_{payload.job_key}"]
+        new_tag = {"name": f"job_data_{payload.job_key}", "value": json.dumps({
+            "job_key": payload.job_key,
+            "base_score": base_score,
+            "score": score,
+            "bonus": payload.bonus,
+        })}
         await hrflow.patch_profile_tags(profile_key, existing_tags + [new_tag])
-        _score_cache[_cache_key(payload.job_key, profile_key)] = {"score": score, "bonus": payload.bonus}
         return {"ok": True, "score": score, "bonus": payload.bonus}
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))

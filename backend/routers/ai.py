@@ -7,13 +7,6 @@ from services import hrflow, llm
 
 router = APIRouter()
 
-# In-memory caches (survive HRFlow tag indexing delays)
-_synthesis_cache: dict[str, dict] = {}
-_score_cache: dict[str, dict] = {}  # key -> {score, bonus}
-
-def _cache_key(job_key: str, profile_key: str) -> str:
-    return f"{job_key}:{profile_key}"
-
 
 class GradeRequest(BaseModel):
     job_key: str
@@ -34,9 +27,9 @@ class AskRequest(BaseModel):
 async def grade_candidate(req: GradeRequest):
     """
     Full grading pipeline:
-    1. Fetch HRFlow base score + upskilling data
-    2. LLM produces final adjusted score — stored in profile tags
-    3. LLM generates synthesis — stored in profile tags
+    1. Fetch HRFlow base score + upskilling data — written to profile tag immediately
+    2. LLM produces final adjusted score — stored in profile tag
+    3. LLM generates synthesis — stored in profile tag
     """
     try:
         job, profile, tracking = await _fetch_context(req.job_key, req.profile_key)
@@ -44,32 +37,35 @@ async def grade_candidate(req: GradeRequest):
         base_score = await hrflow.get_profile_score(req.job_key, req.profile_key) or 0.0
         upskilling = await hrflow.get_job_upskilling(req.job_key, req.profile_key)
 
+        # Write base_score immediately — visible even if LLM calls fail below
+        existing_tag = hrflow.extract_tag(profile, f"job_data_{req.job_key}")
+        existing = json.loads(existing_tag) if existing_tag else {}
+        await _patch_tag(req.profile_key, profile, f"job_data_{req.job_key}", json.dumps({
+            **existing,
+            "job_key": req.job_key,
+            "base_score": base_score,
+        }))
+        print(f"[grade] base_score={base_score} written to profile tag", flush=True)
+
+        # Re-fetch profile so LLM tag write starts from fresh tags list
+        profile = await hrflow.get_profile(req.profile_key)
+
         result = await llm.grade_candidate(job, profile, tracking or {}, base_score, upskilling)
         final_score = result.get("final_score", base_score)
 
-        # Cache score immediately (HRFlow tag indexing delay workaround)
-        _score_cache[_cache_key(req.job_key, req.profile_key)] = {"base_score": base_score, "score": final_score, "bonus": 0.0}
+        await _patch_tag(req.profile_key, profile, f"job_data_{req.job_key}", json.dumps({
+            "job_key": req.job_key,
+            "base_score": base_score,
+            "score": final_score,
+            "bonus": existing.get("bonus", 0.0),
+        }))
 
-        # Persist score tag
-        await _patch_tag(
-            req.profile_key, profile,
-            f"job_data_{req.job_key}",
-            json.dumps({"job_key": req.job_key, "base_score": base_score, "score": final_score, "bonus": 0.0}),
-        )
-
-        # Re-fetch profile so synthesis tag write starts from fresh tags list
         profile = await hrflow.get_profile(req.profile_key)
 
-        # Generate and persist synthesis
         synthesis = await llm.synthesize_candidate(
             job, profile, tracking or {}, upskilling, final_score
         )
-        _synthesis_cache[_cache_key(req.job_key, req.profile_key)] = synthesis
-        await _patch_tag(
-            req.profile_key, profile,
-            f"synthesis_{req.job_key}",
-            json.dumps(synthesis),
-        )
+        await _patch_tag(req.profile_key, profile, f"synthesis_{req.job_key}", json.dumps(synthesis))
 
         return {
             "base_score": base_score,
@@ -86,18 +82,9 @@ async def grade_candidate(req: GradeRequest):
 async def get_synthesis(job_key: str, profile_key: str):
     """Return the stored synthesis for a candidate, or null if not yet generated."""
     try:
-        # Check in-memory cache first (avoids HRFlow indexing delay)
-        cached = _synthesis_cache.get(_cache_key(job_key, profile_key))
-        if cached:
-            return cached
-        # Fall back to HRFlow profile tag
         profile = await hrflow.get_profile(profile_key)
         raw = hrflow.extract_tag(profile, f"synthesis_{job_key}")
-        if raw:
-            data = json.loads(raw)
-            _synthesis_cache[_cache_key(job_key, profile_key)] = data
-            return data
-        return None
+        return json.loads(raw) if raw else None
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
 
@@ -120,13 +107,7 @@ async def synthesize_candidate(req: SynthesizeRequest):
         synthesis = await llm.synthesize_candidate(
             job, profile, tracking or {}, upskilling, final_score
         )
-
-        _synthesis_cache[_cache_key(req.job_key, req.profile_key)] = synthesis
-        await _patch_tag(
-            req.profile_key, profile,
-            f"synthesis_{req.job_key}",
-            json.dumps(synthesis),
-        )
+        await _patch_tag(req.profile_key, profile, f"synthesis_{req.job_key}", json.dumps(synthesis))
         return synthesis
     except Exception as e:
         print(f"synthesize error: {e}", flush=True)

@@ -5,7 +5,6 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from services import hrflow
-from routers.ai import _score_cache, _cache_key
 
 router = APIRouter()
 
@@ -109,29 +108,21 @@ async def get_job_candidates(job_key: str):
         if not profile_key:
             continue
 
-        # Try in-memory score cache first (avoids HRFlow tag indexing delay)
         score = None
         base_score = None
         bonus = 0.0
-        cached_score = _score_cache.get(_cache_key(job_key, profile_key))
-        if cached_score:
-            score = cached_score.get("score")
-            base_score = cached_score.get("base_score")
-            bonus = cached_score.get("bonus", 0.0)
 
         try:
             profile = await hrflow.get_profile(profile_key)
-            if score is None:
-                raw_tag = hrflow.extract_tag(profile, f"job_data_{job_key}")
-                if raw_tag:
-                    tag_data = json.loads(raw_tag)
-                    score = tag_data.get("score")
-                    base_score = tag_data.get("base_score")
-                    bonus = tag_data.get("bonus", 0.0)
             info = profile.get("info", {})
+            raw_tag = hrflow.extract_tag(profile, f"job_data_{job_key}")
+            if raw_tag:
+                tag_data = json.loads(raw_tag)
+                score = tag_data.get("score")
+                base_score = tag_data.get("base_score")
+                bonus = tag_data.get("bonus", 0.0)
         except Exception:
             profile = {}
-            # Fallback to info provided in the tracking if return_profile was true or included in basic list
             info = tracking.get("profile", {}).get("info", {})
 
         candidates.append(

@@ -234,6 +234,7 @@ async def create_job(payload: dict) -> dict:
 # Tracking creation
 # ---------------------------------------------------------------------------
 
+
 async def create_tracking(job_key: str, profile_key: str, stage: str = "applied") -> dict:
     """Create a tracking entry linking a profile to a job."""
     payload = {
@@ -267,10 +268,10 @@ def extract_tag(profile: dict, name: str):
     return None
 
 
-def build_job_tag(job_key: str, score: float, bonus: float = 0.0) -> dict:
+def build_job_tag(job_key: str, score: float, bonus: float = 0.0, base_score: float = None) -> dict:
     """Build a HRFlow tag dict for storing job scoring data."""
     import json
     return {
         "name": f"job_data_{job_key}",
-        "value": json.dumps({"job_key": job_key, "score": score, "bonus": bonus}),
+        "value": json.dumps({"job_key": job_key, "base_score": base_score, "score": score, "bonus": bonus}),
     }

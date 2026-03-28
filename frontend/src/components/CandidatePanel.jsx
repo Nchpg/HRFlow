@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getCandidate, synthesizeCandidate, getStoredSynthesis, updateBonus } from '../services/api'
+import { getCandidate, synthesizeCandidate, getStoredSynthesis, updateBonus, gradeCandidate } from '../services/api'
 import AskAssistant from './AskAssistant'
 
 function scoreBadgeClass(score) {
@@ -151,6 +151,9 @@ export default function CandidatePanel({ candidateRef, job, onClose }) {
   const [loadingSynth, setLoadingSynth] = useState(false)
   const [bonus, setBonus] = useState(candidateRef?.bonus || 0)
   const [bonusSaving, setBonusSaving] = useState(false)
+  const [loadingGrade, setLoadingGrade] = useState(false)
+  const [gradeError, setGradeError] = useState(null)
+  const [localScores, setLocalScores] = useState(null)
   const [showAsk, setShowAsk] = useState(false)
 
   useEffect(() => {
@@ -159,6 +162,7 @@ export default function CandidatePanel({ candidateRef, job, onClose }) {
     setLoadingSynth(true)
     setProfile(null)
     setSynthesis(null)
+    setLocalScores(null)
     setBonus(candidateRef.bonus || 0)
     getCandidate(candidateRef.profile_key)
       .then(setProfile)
@@ -192,6 +196,21 @@ export default function CandidatePanel({ candidateRef, job, onClose }) {
     }
   }
 
+  const handleGrade = async () => {
+    if (!job || !candidateRef || loadingGrade) return
+    setLoadingGrade(true)
+    setGradeError(null)
+    try {
+      const result = await gradeCandidate(job.key, candidateRef.profile_key)
+      setLocalScores({ base_score: result.base_score ?? null, score: result.final_score ?? null })
+      setActiveTab('scoring')
+    } catch (e) {
+      setGradeError(e.message)
+    } finally {
+      setLoadingGrade(false)
+    }
+  }
+
   const handleBonusSave = async () => {
     if (!job || !candidateRef) return
     setBonusSaving(true)
@@ -210,8 +229,10 @@ export default function CandidatePanel({ candidateRef, job, onClose }) {
   const pictureUrl = info.picture || null
   const initials = `${candidateRef.first_name?.[0] || ''}${candidateRef.last_name?.[0] || ''}`.toUpperCase() || '?'
   const fullName = `${candidateRef.first_name} ${candidateRef.last_name}`.trim()
-  const totalScore = candidateRef.score !== null && candidateRef.score !== undefined
-    ? Math.min(1, (candidateRef.score || 0) + (candidateRef.bonus || 0))
+  const effectiveScore = localScores?.score ?? candidateRef.score ?? null
+  const effectiveBaseScore = localScores?.base_score ?? candidateRef.base_score ?? null
+  const totalScore = effectiveScore !== null
+    ? Math.min(1, effectiveScore + (parseFloat(bonus) || 0))
     : null
 
   const currentStageIdx = PIPELINE_STAGES.findIndex(
@@ -270,7 +291,8 @@ export default function CandidatePanel({ candidateRef, job, onClose }) {
                 )}
                 {activeTab === 'scoring' && (
                   <ScoringTab
-                    candidateRef={candidateRef}
+                    aiScore={effectiveScore}
+                    hrflowScore={effectiveBaseScore}
                     bonus={bonus}
                     setBonus={setBonus}
                     onSaveBonus={handleBonusSave}
@@ -286,13 +308,21 @@ export default function CandidatePanel({ candidateRef, job, onClose }) {
 
           {/* Actions */}
           <div style={s.actionRow}>
-            <button className="btn-primary" onClick={handleSynthesize} disabled={loadingSynth}>
+            <button className="btn-primary" onClick={handleGrade} disabled={loadingGrade}>
+              {loadingGrade ? '⏳ Grading…' : '📊 Grade'}
+            </button>
+            <button className="btn-ghost" onClick={handleSynthesize} disabled={loadingSynth}>
               {loadingSynth ? '⏳ Generating…' : synthesis ? '🔄 Re-generate' : '📄 Synthesize'}
             </button>
             <button className="btn-ghost" onClick={() => setShowAsk(true)}>
               💬 Ask
             </button>
           </div>
+          {gradeError && (
+            <div style={{ padding: '6px 20px', fontSize: '.8rem', color: '#c0392b', borderTop: '1px solid var(--border)' }}>
+              Grade failed: {gradeError}
+            </div>
+          )}
         </div>
       </div>
 
@@ -437,10 +467,8 @@ function ChipSection({ title, items = [], color }) {
   )
 }
 
-function ScoringTab({ candidateRef, bonus, setBonus, onSaveBonus, bonusSaving }) {
-  const hrflowScore = candidateRef.base_score ?? null
-  const aiScore = candidateRef.score ?? null
-  const totalScore = aiScore !== null
+function ScoringTab({ hrflowScore, aiScore, bonus, setBonus, onSaveBonus, bonusSaving }) {
+  const totalScore = aiScore !== null && aiScore !== undefined
     ? Math.min(1, aiScore + (parseFloat(bonus) || 0))
     : null
   const fmt = (v) => v !== null && v !== undefined ? `${Math.round(v * 100)}%` : '—'

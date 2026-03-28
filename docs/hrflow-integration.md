@@ -14,8 +14,8 @@ X-USER-EMAIL: <HRFLOW_USER_EMAIL>
 |----------|-------------|
 | **Source** | A pool of candidate profiles. Profiles are created by uploading PDF resumes. Identified by `HRFLOW_SOURCE_KEY`. |
 | **Board** | A collection of job postings. Jobs are created and listed from here. Identified by `HRFLOW_BOARD_KEY`. |
-| **Tracking** | Links a profile (from Source) to a job (from Board). Carries the application stage and metadata. |
-| **Profile Tag** | Key/value metadata attached to a profile. Used to persist scores and synthesis. |
+| **Tracking** | Links a profile (from Source) to a job (from Board). Carries the application stage. Created once on upload — no update endpoint exists. |
+| **Profile Tag** | Key/value metadata attached to a profile. Used to persist scores and synthesis across all machines (no in-memory cache). |
 
 ---
 
@@ -90,28 +90,53 @@ Writable fields: `reference`, `info`, `text`, `summary`, `cover_letter`, `experi
 
 > A tracking is created automatically when a PDF is uploaded with a `job_key`. Without it, the candidate will never appear in the job's candidate list (trackings are the only link between profiles and jobs).
 
+> **Tracking has no update endpoint.** `PUT`, `PATCH`, and re-`POST` all fail or create duplicates. Do not use tracking to store mutable data — use profile tags instead.
+
 ---
 
-### Scoring & Upskilling
+### Grading
 
 | Action | Method | Endpoint |
 |--------|--------|----------|
-| Native profile score | `GET` | `/v1/profiles/scoring?board_key=...&source_keys=[...]&job_key=...&profile_key=...` |
+| Grade profile against job | `GET` | `/v1/profile/grading?board_key=...&source_key=...&algorithm_key=grader-hrflow-profiles&job_key=...&profile_key=...` |
 | Upskilling analysis | `GET` | `/v1/job/upskilling?board_key=...&job_key=...&source_key=...&profile_key=...` |
+
+**Grading response:**
+```json
+{
+  "code": 200,
+  "message": "Grading finished in 0.18 seconds.",
+  "data": {
+    "score": 0.787,
+    "profiles": [...]
+  }
+}
+```
+
+> Score is at `data.score`, not `data.profiles[0].score`.
+
+> Returns 400/404 non-fatally if profile not yet indexed — grading proceeds with `base_score=0`.
 
 ---
 
 ## Profile Tag Schema
 
-Two tag types are stored per (candidate, job) pair:
+Two tag types are stored per (candidate, job) pair on the HRFlow profile.
+Tags survive container restarts and are visible from any machine using the same HRFlow workspace.
 
 **Score tag** — `job_data_{job_key}`:
 ```json
 {
   "name": "job_data_abc123",
-  "value": "{\"job_key\": \"abc123\", \"score\": 0.78, \"bonus\": 0.05}"
+  "value": "{\"job_key\": \"abc123\", \"base_score\": 0.79, \"score\": 0.65, \"bonus\": 0.05}"
 }
 ```
+
+| Field | Description |
+|-------|-------------|
+| `base_score` | Raw HRFlow grading score from `/v1/profile/grading` |
+| `score` | LLM-adjusted final score |
+| `bonus` | HR manual bonus (added to `score` for total) |
 
 **Synthesis tag** — `synthesis_{job_key}`:
 ```json
@@ -121,7 +146,28 @@ Two tag types are stored per (candidate, job) pair:
 }
 ```
 
-The synthesis tag value is a JSON-serialized synthesis object. It is also cached in memory on the backend (`_synthesis_cache`) to survive HRFlow's indexing delay after a PUT.
+Both tags are written by `POST /api/ai/grade`. `base_score` is written immediately before LLM calls so it persists even if the LLM fails (rate limit, etc.).
+
+---
+
+## Score Data Flow
+
+```
+/v1/profile/grading  →  base_score
+LLM grade_candidate  →  score (adjusted from base_score)
+LLM synthesize       →  synthesis
+
+All three written to profile tags (job_data_{job_key}, synthesis_{job_key})
+
+GET /api/jobs/{job_key}/candidates
+  → reads tag from fetched profile
+  → returns {base_score, score, bonus} per candidate
+
+CandidatePanel (frontend)
+  → Grade button calls POST /api/ai/grade
+  → response {base_score, final_score} updates localScores state immediately
+  → ScoringTab shows: HRFlow Score | AI Score | HR Bonus | Total
+```
 
 ---
 
@@ -133,8 +179,11 @@ The synthesis tag value is a JSON-serialized synthesis object. It is also cached
 | `PUT /profile/indexing` returns 400 | Missing required profile fields | Full profile fetched first, all mutable fields included |
 | `PATCH /profile/indexing` returns 405 | Method not supported | Changed to `PUT` |
 | `POST /tracking` requires `role` field | Missing `role` causes 400 | Added `"role": "candidate"` |
+| `PUT`/`PATCH /tracking` returns 405 | No update endpoint on tracking | Store mutable data in profile tags instead |
+| `POST /tracking` with existing key creates duplicate | POST is not upsert | Do not POST to update tracking — use profile tags for mutable data |
 | Singular vs plural param names | Singular (`source_key`) = 1-to-1 lookup; plural (`source_keys` as JSON array) = 1-to-N search/list | Use `source_keys=["{key}"]` for list endpoints, `source_key={key}` for single-resource endpoints |
-| `GET /profiles/scoring` returns 400 on fresh upload | Profile not indexed yet | Returns `None`, grading proceeds without base score |
+| `GET /profiles/scoring` replaced by `/profile/grading` | `/profiles/scoring` returned wrong data; correct endpoint is singular `/profile/grading` with `algorithm_key=grader-hrflow-profiles` | Updated endpoint and algorithm key |
+| Grading score at `data.score` not `data.profiles[0].score` | Different response structure from scoring endpoint | Parse `r.json()["data"]["score"]` directly |
+| Score not updated in UI after grading | `candidateRef` prop is stale after grade completes | `handleGrade` stores response in `localScores` state; ScoringTab reads `localScores ?? candidateRef` |
 | New jobs not in search results | HRFlow search index delay | localStorage pending keys + individual GET fallback |
 | New candidates not in tracking list | Same indexing delay | localStorage pending candidates per job + individual GET fallback |
-| Synthesis not visible after write | Same indexing delay on tags | In-memory `_synthesis_cache` dict on backend |
