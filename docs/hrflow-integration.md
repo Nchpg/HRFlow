@@ -15,7 +15,8 @@ X-USER-EMAIL: <HRFLOW_USER_EMAIL>
 | **Source** | A pool of candidate profiles. Profiles are created by uploading PDF resumes. Identified by `HRFLOW_SOURCE_KEY`. |
 | **Board** | A collection of job postings. Jobs are created and listed from here. Identified by `HRFLOW_BOARD_KEY`. |
 | **Tracking** | Links a profile (from Source) to a job (from Board). Carries the application stage. Created once on upload — no update endpoint exists. |
-| **Profile Tag** | Key/value metadata attached to a profile. Used to persist scores and synthesis across all machines (no in-memory cache). |
+| **Profile Tag** | Key/value metadata attached to a profile. Used to persist scores and synthesis. Tags survive container restarts and are accessible from any machine on the same workspace. |
+| **Profile Metadata** | Additional key/value metadata, used here to store extra HR documents (interview notes, transcripts, etc.) per (candidate, job) pair. |
 
 ---
 
@@ -54,7 +55,7 @@ X-USER-EMAIL: <HRFLOW_USER_EMAIL>
 |--------|--------|----------|
 | Get profile | `GET` | `/v1/profile/indexing?source_key={key}&key={profile_key}` |
 | Parse resume | `POST` | `/v1/profile/parsing/file` (multipart) |
-| Update profile tags | `PUT` | `/v1/profile/indexing` |
+| Update profile tags / metadatas | `PUT` | `/v1/profile/indexing` |
 
 **Resume upload payload** — multipart/form-data:
 - `source_key`: the source key
@@ -63,7 +64,7 @@ X-USER-EMAIL: <HRFLOW_USER_EMAIL>
 
 > `sync_parsing=1` is required to get the profile data back in the response.
 
-**Profile tag update** uses `PUT` (not `PATCH` — HRFlow returns 405 on PATCH).
+**Profile tag/metadata update** uses `PUT` (not `PATCH` — HRFlow returns 405 on PATCH).
 The PUT endpoint is a full replace, so the complete mutable profile must be included.
 Writable fields: `reference`, `info`, `text`, `summary`, `cover_letter`, `experiences`, `educations`, `skills`, `languages`, `interests`, `tags`, `metadatas`, `certifications`, `courses`, `tasks`.
 
@@ -117,26 +118,27 @@ Writable fields: `reference`, `info`, `text`, `summary`, `cover_letter`, `experi
 
 > Returns 400/404 non-fatally if profile not yet indexed — grading proceeds with `base_score=0`.
 
+> **`base_score` is cached** in the `job_data_{job_key}` profile tag after the first successful fetch. Subsequent grades reuse the cached value without calling this endpoint, since HRFlow's algorithmic score only changes when the profile itself changes.
+
 ---
 
 ## Profile Tag Schema
 
 Two tag types are stored per (candidate, job) pair on the HRFlow profile.
-Tags survive container restarts and are visible from any machine using the same HRFlow workspace.
 
 **Score tag** — `job_data_{job_key}`:
 ```json
 {
   "name": "job_data_abc123",
-  "value": "{\"job_key\": \"abc123\", \"base_score\": 0.79, \"score\": 0.65, \"bonus\": 0.05}"
+  "value": "{\"job_key\": \"abc123\", \"base_score\": 0.79, \"ai_adjustment\": 0.12, \"bonus\": 0.05}"
 }
 ```
 
 | Field | Description |
 |-------|-------------|
-| `base_score` | Raw HRFlow grading score from `/v1/profile/grading` |
-| `score` | LLM-adjusted final score |
-| `bonus` | HR manual bonus (added to `score` for total) |
+| `base_score` | Raw HRFlow grading score from `/v1/profile/grading`. Cached after first fetch; never overwritten on subsequent grades. |
+| `ai_adjustment` | Sum of per-document LLM delta scores, capped at ±0.3. Updated on each grade if new documents are present. |
+| `bonus` | HR manual adjustment (−1.0 to +1.0). Written by `PATCH /api/candidates/{profile_key}/bonus`. |
 
 **Synthesis tag** — `synthesis_{job_key}`:
 ```json
@@ -146,27 +148,64 @@ Tags survive container restarts and are visible from any machine using the same 
 }
 ```
 
-Both tags are written by `POST /api/ai/grade`. `base_score` is written immediately before LLM calls so it persists even if the LLM fails (rate limit, etc.).
+Written by `POST /api/ai/synthesize`. Read by `GET /api/ai/synthesis`.
+
+---
+
+## Extra Document Metadata Schema
+
+Extra HR documents (interview notes, transcripts, etc.) are stored in the profile's `metadatas` array. Each entry is namespaced per (job, timestamp).
+
+**Metadata entry** — `extra_doc_{job_key}_{unix_timestamp}`:
+```json
+{
+  "name": "extra_doc_abc123_1711634400",
+  "value": "{\"job_key\": \"abc123\", \"filename\": \"interview_notes.txt\", \"content\": \"...\", \"uploaded_by\": \"hr@company.com\", \"uploaded_at\": \"2026-03-28T14:00:00Z\", \"delta\": 0.08, \"delta_rationale\": \"Reveals strong leadership experience.\"}"
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `job_key` | Scopes the document to a specific job |
+| `filename` | Display name |
+| `content` | Full text, truncated at 8 000 characters |
+| `uploaded_by` | HR user identifier |
+| `uploaded_at` | ISO 8601 timestamp |
+| `delta` | LLM-assigned score contribution (−0.2 to +0.2). `null` until graded. |
+| `delta_rationale` | One-sentence LLM explanation of the delta. `null` until graded. |
 
 ---
 
 ## Score Data Flow
 
 ```
-/v1/profile/grading  →  base_score
-LLM grade_candidate  →  score (adjusted from base_score)
-LLM synthesize       →  synthesis
+First grade (after upload):
+  /v1/profile/grading  →  base_score
+    → written to job_data_{job_key} tag immediately (before LLM calls)
 
-All three written to profile tags (job_data_{job_key}, synthesis_{job_key})
+Per extra document (only those without a stored delta):
+  LLM score_single_document  →  {delta, rationale}
+    → written back into the document's metadata entry
+
+  ai_adjustment = sum(all deltas), capped ±0.3
+    → written to job_data_{job_key} tag
+
+Synthesis (separate call, POST /api/ai/synthesize):
+  /v1/job/upskilling  →  upskilling data (non-fatal if unavailable)
+  LLM synthesize_candidate  →  {summary, strengths, weaknesses, upskilling, verdict}
+    → written to synthesis_{job_key} tag
+
+Subsequent grades:
+  base_score read from tag (no HRFlow API call)
+  Only new documents (delta = null) trigger LLM scoring
 
 GET /api/jobs/{job_key}/candidates
-  → reads tag from fetched profile
-  → returns {base_score, score, bonus} per candidate
+  → reads job_data_{job_key} tag from each profile
+  → returns score = min(1, base_score + ai_adjustment + bonus)
 
-CandidatePanel (frontend)
-  → Grade button calls POST /api/ai/grade
-  → response {base_score, final_score} updates localScores state immediately
-  → ScoringTab shows: HRFlow Score | AI Score | HR Bonus | Total
+CandidatePanel (frontend) — two-phase flow:
+  Phase 1: POST /api/ai/grade  →  {base_score, ai_adjustment}  →  score display updates
+  Phase 2: POST /api/ai/synthesize  →  synthesis  →  Synthesis tab updates
 ```
 
 ---
@@ -184,6 +223,6 @@ CandidatePanel (frontend)
 | Singular vs plural param names | Singular (`source_key`) = 1-to-1 lookup; plural (`source_keys` as JSON array) = 1-to-N search/list | Use `source_keys=["{key}"]` for list endpoints, `source_key={key}` for single-resource endpoints |
 | `GET /profiles/scoring` replaced by `/profile/grading` | `/profiles/scoring` returned wrong data; correct endpoint is singular `/profile/grading` with `algorithm_key=grader-hrflow-profiles` | Updated endpoint and algorithm key |
 | Grading score at `data.score` not `data.profiles[0].score` | Different response structure from scoring endpoint | Parse `r.json()["data"]["score"]` directly |
-| Score not updated in UI after grading | `candidateRef` prop is stale after grade completes | `handleGrade` stores response in `localScores` state; ScoringTab reads `localScores ?? candidateRef` |
 | New jobs not in search results | HRFlow search index delay | localStorage pending keys + individual GET fallback |
 | New candidates not in tracking list | Same indexing delay | localStorage pending candidates per job + individual GET fallback |
+| Score not updated in UI after grading | `candidateRef` prop is stale after grade completes | Grade response stored in `localScores` state; display reads `localScores ?? candidateRef` |

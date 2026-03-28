@@ -1,8 +1,8 @@
-# Candidate Extra Documents — Specification
+# Candidate Extra Documents
 
 ## Overview
 
-HR can attach supplementary text documents to a candidate's profile for a given job. These documents are stored in the HRFlow profile's `metadatas` field (since HRFlow profiles do not support custom file attachments). They feed directly into the AI grading pipeline as additional context. If no extra documents are provided, grading behaves identically to the current flow.
+HR can attach supplementary text documents to a candidate's profile for a given job. These documents are stored in the HRFlow profile's `metadatas` field (since HRFlow profiles do not support custom file attachments). Each document is individually scored by the LLM to produce a `delta` contribution to the candidate's total score. If no extra documents are provided, grading uses only the HRFlow base score.
 
 ---
 
@@ -17,7 +17,7 @@ Extra documents are stored as entries in the profile's `metadatas` array via `PU
   "metadatas": [
     {
       "name": "extra_doc_{job_key}_{timestamp}",
-      "value": "{\"job_key\": \"abc123\", \"filename\": \"interview_notes.txt\", \"content\": \"Candidate demonstrated strong problem-solving...\", \"uploaded_by\": \"hr@company.com\", \"uploaded_at\": \"2026-03-28T14:00:00Z\"}"
+      "value": "{\"job_key\": \"abc123\", \"filename\": \"interview_notes.txt\", \"content\": \"Candidate demonstrated strong problem-solving...\", \"uploaded_by\": \"hr@company.com\", \"uploaded_at\": \"2026-03-28T14:00:00Z\", \"delta\": 0.08, \"delta_rationale\": \"Reveals strong leadership experience relevant to the role.\"}"
     }
   ]
 }
@@ -36,7 +36,9 @@ Extra documents are stored as entries in the profile's `metadatas` array via `PU
   "filename": "interview_notes.txt",
   "content": "Full text content of the document...",
   "uploaded_by": "hr@company.com",
-  "uploaded_at": "2026-03-28T14:00:00Z"
+  "uploaded_at": "2026-03-28T14:00:00Z",
+  "delta": 0.08,
+  "delta_rationale": "Reveals strong leadership experience relevant to the role."
 }
 ```
 
@@ -47,6 +49,8 @@ Extra documents are stored as entries in the profile's `metadatas` array via `PU
 | `content` | string | yes | Full text content |
 | `uploaded_by` | string | no | Email or identifier of the HR user who submitted |
 | `uploaded_at` | ISO 8601 | yes | Submission timestamp |
+| `delta` | float | no | LLM-assigned score contribution (−0.2 to +0.2). `null` until first grade runs. |
+| `delta_rationale` | string | no | One-sentence LLM explanation of the delta. `null` until first grade runs. |
 
 ### Constraints
 
@@ -54,7 +58,8 @@ Extra documents are stored as entries in the profile's `metadatas` array via `PU
 - **Per-job scoping** — documents for job A are not visible when reviewing job B.
 - **Multiple documents** — multiple documents per (candidate, job) pair are supported.
 - **Size limit** — content truncated at 8 000 characters to stay within HRFlow metadata value limits.
-- **No deletion** in v1 — documents are append-only. A future version may support soft-delete via a `deleted: true` flag in the JSON.
+- **No deletion** in v1 — documents are append-only.
+- **Stable deltas** — once a document's `delta` is written, it is never re-scored. Only documents with `delta = null` trigger LLM calls on the next grade.
 
 ---
 
@@ -75,13 +80,15 @@ GET /api/candidates/{profile_key}/documents?job_key={job_key}
       "filename": "interview_notes.txt",
       "content": "Candidate demonstrated...",
       "uploaded_by": "hr@company.com",
-      "uploaded_at": "2026-03-28T14:00:00Z"
+      "uploaded_at": "2026-03-28T14:00:00Z",
+      "delta": 0.08,
+      "delta_rationale": "Reveals strong leadership experience."
     }
   ]
 }
 ```
 
-Implementation: fetch profile via `GET /v1/profile/indexing`, filter `metadatas` entries whose `name` starts with `extra_doc_{job_key}_`, parse each value.
+Implementation: fetch profile via `GET /v1/profile/indexing`, filter `metadatas` entries whose `name` starts with `extra_doc_{job_key}_`, parse each value, sort by `uploaded_at`.
 
 ---
 
@@ -111,38 +118,49 @@ POST /api/candidates/{profile_key}/documents
 Implementation:
 1. Fetch current profile
 2. Parse existing `metadatas`
-3. Append new entry with `name = extra_doc_{job_key}_{unix_timestamp}`
+3. Append new entry with `name = extra_doc_{job_key}_{unix_timestamp}` (no `delta` yet)
 4. `PUT /v1/profile/indexing` with updated metadatas
 
 ---
 
 ## Scoring Integration
 
-In `backend/routers/ai.py`, the `grade_candidate` endpoint is updated to pass extra documents to the LLM:
+### Per-Document Delta Scoring
+
+Each document is scored individually by the LLM in context of all other attached documents. Scoring happens inside `POST /api/ai/grade`.
 
 ```python
-# Fetch extra documents for this job
-extra_docs = await hrflow.get_extra_documents(req.job_key, req.profile_key)
+already_scored = [d for d in extra_docs if d.get("delta") is not None]
+to_score       = [d for d in extra_docs if d.get("delta") is None]
 
-result = await llm.grade_candidate(
-    job, profile, tracking or {}, base_score, upskilling,
-    extra_docs=extra_docs   # new parameter
-)
+for doc in to_score:
+    other_docs = [d for d in extra_docs if d["id"] != doc["id"]]
+    result = await llm.score_single_document(job, profile, doc, other_docs)
+    # result = {"delta": float, "rationale": str}
+
+# write delta + delta_rationale back into each document's metadata entry
+await hrflow.update_documents_with_deltas(profile_key, job_key, newly_scored)
+
+all_deltas    = [d["delta"] for d in already_scored + newly_scored]
+ai_adjustment = round(max(-0.3, min(0.3, sum(all_deltas))), 3)
 ```
 
-In `backend/services/llm.py`, `grade_candidate` appends extra document content to the prompt context:
+### Delta Scoring Rules
+
+| Delta | Meaning |
+|-------|---------|
+| +0.01 to +0.2 | Document reveals genuine strengths or achievements that support the candidate's fit |
+| ~0.0 | Neutral, redundant, or doesn't add new signal |
+| -0.01 to -0.2 | Explicit red flag, or directly contradicts a positive claim made in another document |
+
+> A document that is simply "less impressive" than another is **not** a contradiction. Only genuine factual contradictions or explicit red flags produce a negative delta.
+
+### Score Formula
 
 ```
---- SUPPLEMENTARY HR DOCUMENTS ---
-[interview_notes.txt]
-Candidate demonstrated strong problem-solving...
-
-[manager_feedback.txt]
-Team lead noted excellent communication skills...
---- END SUPPLEMENTARY DOCUMENTS ---
+ai_adjustment = sum(all document deltas), capped at ±0.3
+total         = min(1.0, max(0.0, base_score + ai_adjustment + bonus))
 ```
-
-**If `extra_docs` is empty**, this section is omitted entirely and the prompt is unchanged — grading is identical to the current behaviour.
 
 ---
 
@@ -150,87 +168,53 @@ Team lead noted excellent communication skills...
 
 ### Location
 
-The extra documents panel lives as a new tab **"Documents"** in `CandidatePanel`, alongside Overview / Synthesis / Scoring / Resume.
+The extra documents panel lives as the **"Documents"** tab in `CandidatePanel`, alongside Overview / Synthesis / Scoring / Resume / Ask.
 
 ---
 
-### Chat-Like Input
+### Document Bubbles
 
-At the bottom of the Documents tab, an input area allows HR to submit new text documents:
-
-```
-┌──────────────────────────────────────────┐
-│  Filename (optional)                      │
-│  ┌────────────────────────────────────┐  │
-│  │ interview_notes                    │  │
-│  └────────────────────────────────────┘  │
-│                                           │
-│  Content                                  │
-│  ┌────────────────────────────────────┐  │
-│  │                                    │  │
-│  │  Type or paste text here…          │  │
-│  │                                    │  │
-│  └────────────────────────────────────┘  │
-│                               [ Send  ]  │
-└──────────────────────────────────────────┘
-```
-
-- **Filename field** — optional, defaults to `document_{n}.txt` where `n` is the 1-based index.
-- **Content field** — multiline textarea, 6–10 rows.
-- **Send button** — calls `POST /api/candidates/{profile_key}/documents`.
-- Sending is disabled while a previous upload is in progress.
-
----
-
-### Document List (Chat Bubbles)
-
-Each submitted document is displayed as a chat bubble anchored to the right (HR-sent), similar to iMessage/WhatsApp file attachments.
-
-Each bubble shows:
+Each submitted document is displayed as a chat bubble anchored to the right:
 
 ```
-                            ┌────────────────────────┐
-                            │ 📄 interview_notes.txt  │
-                            │ ─────────────────────── │
-                            │ Candidate demonstrated  │
-                            │ strong problem-solving… │
-                            │ [View full text ›]       │
-                            │                          │
-                            │ hr@company · 28 Mar 14:00│
-                            └────────────────────────┘
+                            ┌─────────────────────────┐
+                            │ 📄 interview_notes.txt +8%│
+                            │ Reveals strong leadership │
+                            │ ────────────────────────  │
+                            │ Candidate demonstrated    │
+                            │ strong problem-solving…   │
+                            │ [View full text ›]         │
+                            │                           │
+                            │ hr@company · 28 Mar 14:00 │
+                            └─────────────────────────┘
 ```
 
-- **Always displayed as a file bubble** — even short content uses the file format, never inline plain text. This ensures consistent visual language regardless of content length.
-- **Content preview** — first 2 lines (~120 characters) of the text, truncated with `…`.
-- **"View full text ›" link** — opens the text viewer panel (see below).
-- **Metadata footer** — uploader identifier and formatted timestamp.
+**Delta badge** — colored pill next to the filename:
+- Green background: positive delta (`+X%`)
+- Red background: negative delta (`-X%`)
+- Neutral: zero delta
+- Not shown: `delta = null` (document not yet graded)
+
+**Delta rationale** — one-sentence LLM explanation shown in italic below the filename.
 
 ---
 
 ### Text Viewer Panel
 
-Clicking **"View full text ›"** opens a slide-in panel (same drawer pattern as `CandidatePanel`) overlaid on top, showing:
+Clicking **"View full text ›"** opens an overlay panel showing the full document content in a scrollable monospace view. Close button dismisses it.
 
-```
-┌─────────────────────────────────────────┐
-│ 📄 interview_notes.txt        [✕ Close] │
-│ hr@company · 28 Mar 2026 14:00          │
-├─────────────────────────────────────────┤
-│                                         │
-│  Candidate demonstrated strong          │
-│  problem-solving during the technical   │
-│  interview. Answered all questions      │
-│  with clear explanations…               │
-│                                         │
-│  (full text, scrollable)                │
-│                                         │
-└─────────────────────────────────────────┘
-```
+---
 
-- Fixed-width monospace font (`font-family: monospace`) to preserve formatting.
-- Scrollable body, no truncation.
-- Close button dismisses the panel and returns focus to the Documents tab.
-- No edit functionality in v1.
+### Auto-Grade on Send
+
+When a document is submitted:
+1. Document is uploaded immediately
+2. "Grading…" spinner appears on the candidate row (via `processingProfiles`) and in the panel banner
+3. Grade runs in background — only the new document is scored; existing deltas are unchanged
+4. Score display updates (Phase 1 complete)
+5. "Generating synthesis…" banner appears
+6. Synthesis runs in background (Phase 2 complete)
+7. Processing cleared
 
 ---
 
@@ -238,24 +222,16 @@ Clicking **"View full text ›"** opens a slide-in panel (same drawer pattern as
 
 ```
 CandidatePanel
-└── DocumentsTab                    (new)
-    ├── DocumentList
-    │   └── DocumentBubble[]        (one per document)
-    │       └── onClick → opens TextViewerPanel
-    ├── TextViewerPanel             (conditional overlay)
+└── DocumentsTab
+    ├── DocumentBubble[]       (one per document)
+    │   ├── DeltaBadge         (colored +X% / -X% pill)
+    │   ├── delta_rationale    (italic one-liner below filename)
+    │   ├── content preview    (first 2 lines / 120 chars)
+    │   └── onClick → TextViewerPanel overlay
     └── DocumentInput
-        ├── FilenameField
-        ├── ContentTextarea
+        ├── FilenameField      (optional)
+        ├── ContentTextarea    (6 rows, Ctrl+Enter to send)
         └── SendButton
-```
-
-New API service functions in `frontend/src/services/api.js`:
-```js
-export const getExtraDocuments = (profileKey, jobKey) =>
-  request('GET', `/candidates/${profileKey}/documents?job_key=${jobKey}`)
-
-export const uploadExtraDocument = (profileKey, jobKey, filename, content) =>
-  request('POST', `/candidates/${profileKey}/documents`, { job_key: jobKey, filename, content })
 ```
 
 ---
@@ -265,9 +241,11 @@ export const uploadExtraDocument = (profileKey, jobKey, filename, content) =>
 | State | Trigger | Behaviour |
 |-------|---------|-----------|
 | Loading documents | Tab opened | Spinner while fetching, then list renders |
-| Sending document | Send clicked | Button disabled, spinner; on success new bubble appended to list |
+| Sending document | Send clicked | Button disabled, spinner; on success new bubble appended; auto-grade fires |
 | Send error | API error | Error message below input, input remains editable |
-| Viewer open | Bubble click | TextViewerPanel renders over Documents tab content |
+| Grading | After send | `processingProfiles[profileKey] = 'Grading…'` — spinner on row + panel banner |
+| Synthesis | After grade | `processingProfiles[profileKey] = 'Generating synthesis…'` — banner updates |
+| Viewer open | Bubble click | TextViewerPanel renders as overlay |
 | Viewer closed | Close button | TextViewerPanel unmounts |
 
 ---

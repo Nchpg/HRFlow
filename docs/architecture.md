@@ -65,9 +65,10 @@ HRFlow/
             ├── Sidebar.jsx
             ├── JobView.jsx
             ├── CandidatePanel.jsx
+            ├── DocumentsTab.jsx   ← extra documents tab (upload, delta badges, viewer)
+            ├── AskAssistant.jsx   ← interview questions (inline tab or overlay)
             ├── CreateJobModal.jsx
-            ├── UploadResumeModal.jsx
-            └── AskAssistant.jsx
+            └── UploadResumeModal.jsx
 ```
 
 ## Data Persistence Strategy
@@ -77,9 +78,9 @@ HRFlow/
 | Jobs           | HRFlow Board (`job/indexing`)             |
 | Profiles       | HRFlow Source (`profile/indexing`)        |
 | Trackings      | HRFlow Tracking (`tracking/indexing`)     |
-| Scores         | HRFlow profile tag `job_data_<job_key>`   |
-| Synthesis      | HRFlow profile tag `synthesis_<job_key>`  + in-memory cache |
-| Bonus          | Inside `job_data_<job_key>` tag           |
+| Scores         | HRFlow profile tag `job_data_<job_key>` (`base_score`, `ai_adjustment`, `bonus`) |
+| Synthesis      | HRFlow profile tag `synthesis_<job_key>`  |
+| Extra documents| HRFlow profile metadatas (`extra_doc_<job_key>_<ts>`) |
 
 ## HRFlow Indexing Delay Workaround
 
@@ -87,4 +88,4 @@ HRFlow's search index (`/jobs/searching`, `/tracking/list`) has a latency of sev
 
 - **Jobs:** `localStorage` stores newly created job keys. `fetchJobs()` fetches each pending key individually via `GET /job/indexing` until it appears in search results, then clears it from localStorage.
 - **Candidates:** Same pattern per job. After upload, the profile key is registered in `localStorage` under `hrflow_pending_candidates_{job_key}`. `fetchCandidates()` fetches each pending profile individually until it appears in trackings.
-- **Synthesis:** In-memory dict (`_synthesis_cache`) on the backend keyed by `{job_key}:{profile_key}`. Written immediately on generation, read before hitting HRFlow tags.
+- **Synthesis:** Stored in HRFlow profile tag `synthesis_{job_key}`. Read directly from HRFlow on panel open — no in-memory cache.

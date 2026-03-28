@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { getJobCandidates, getCandidate } from '../services/api'
+import { getJobCandidates, getCandidate, gradeCandidate, synthesizeCandidate } from '../services/api'
 import UploadResumeModal from './UploadResumeModal'
 
 function lsKey(jobKey) { return `hrflow_pending_candidates_${jobKey}` }
@@ -161,7 +161,7 @@ const s = {
   },
 }
 
-export default function JobView({ job, onSelectCandidate, processingProfiles = {}, refreshKey = 0, selectedProfileKey, onCandidateRefreshed }) {
+export default function JobView({ job, onSelectCandidate, processingProfiles = {}, refreshKey = 0, selectedProfileKey, onCandidateRefreshed, onProcessingChange }) {
   const [candidates, setCandidates] = useState([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
@@ -357,7 +357,26 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
         <UploadResumeModal
           job={job}
           onClose={() => setShowUpload(false)}
-          onSuccess={() => { setShowUpload(false); fetchCandidates() }}
+          onSuccess={(data) => {
+            setShowUpload(false)
+            if (data?.profile_key) registerPendingCandidate(job.key, data.profile_key)
+            fetchCandidates()
+            if (data?.profile_key && onProcessingChange) {
+              const profileKey = data.profile_key
+              onProcessingChange(profileKey, 'Grading…')
+              ;(async () => {
+                try {
+                  await gradeCandidate(job.key, profileKey)
+                  onProcessingChange(profileKey, 'Generating synthesis…')
+                  await synthesizeCandidate(job.key, profileKey)
+                } catch (e) {
+                  console.error('background grade/synthesize failed:', e)
+                } finally {
+                  onProcessingChange(profileKey, null)
+                }
+              })()
+            }
+          }}
         />
       )}
     </div>

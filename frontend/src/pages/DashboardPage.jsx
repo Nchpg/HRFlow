@@ -83,6 +83,7 @@ export default function DashboardPage() {
         refreshKey={candidateRefreshKey}
         selectedProfileKey={selectedCandidate?.profile_key}
         onCandidateRefreshed={(c) => setSelectedCandidate(c)}
+        onProcessingChange={setProcessing}
       />
 
       {selectedCandidate && (

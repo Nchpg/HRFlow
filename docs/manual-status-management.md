@@ -519,8 +519,8 @@ After full implementation, a profile will carry up to three tags per job it is l
 
 | Tag key | Content | Written by |
 |---------|---------|------------|
-| `job_data_{job_key}` | `base_score`, `score`, `bonus` | `POST /api/ai/grade`, `PATCH /api/candidates/{profile_key}/bonus` |
-| `synthesis_{job_key}` | `summary`, `strengths`, `weaknesses`, `upskilling`, `verdict` | `POST /api/ai/grade`, `POST /api/ai/synthesize` |
+| `job_data_{job_key}` | `base_score`, `ai_adjustment`, `bonus` | `POST /api/ai/grade`, `PATCH /api/candidates/{profile_key}/bonus` |
+| `synthesis_{job_key}` | `summary`, `strengths`, `weaknesses`, `upskilling`, `verdict` | `POST /api/ai/synthesize` |
 | `stage_{job_key}` | `stage`, `updated_at` | `PATCH /api/candidates/{profile_key}/stage` |
 
 ### Job tag — per-job custom stage registry

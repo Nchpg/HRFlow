@@ -1,6 +1,5 @@
 import { useState, useRef } from 'react'
-import { uploadResume, gradeCandidate } from '../services/api'
-import { registerPendingCandidate } from './JobView'
+import { uploadResume } from '../services/api'
 
 const s = {
   overlay: {
@@ -73,7 +72,6 @@ export default function UploadResumeModal({ job, onClose, onSuccess }) {
   const [file, setFile] = useState(null)
   const [dragging, setDragging] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState(null)
   const [error, setError] = useState(null)
   const inputRef = useRef()
 
@@ -93,15 +91,9 @@ export default function UploadResumeModal({ job, onClose, onSuccess }) {
     if (!file || loading) return
     setLoading(true)
     setError(null)
-    setResult(null)
     try {
       const data = await uploadResume(file, job?.key)
-      setResult(data)
-      if (job?.key && data?.profile_key) {
-        registerPendingCandidate(job.key, data.profile_key)
-        try { await gradeCandidate(job.key, data.profile_key) } catch { /* silent */ }
-      }
-      onSuccess?.()
+      onSuccess?.(data)
     } catch (e) {
       setError(e.message)
     } finally {
@@ -149,12 +141,6 @@ export default function UploadResumeModal({ job, onClose, onSuccess }) {
             </div>
           )}
 
-          {result && (
-            <div style={s.success}>
-              ✓ Profile created — <strong>{result.name || result.profile_key}</strong>
-              {result.email ? ` · ${result.email}` : ''}
-            </div>
-          )}
           {error && <div style={s.error}>⚠ {error}</div>}
         </div>
 
@@ -163,7 +149,7 @@ export default function UploadResumeModal({ job, onClose, onSuccess }) {
           <button
             className="btn-primary"
             onClick={handleUpload}
-            disabled={!file || loading || !!result}
+            disabled={!file || loading}
           >
             {loading ? '⏳ Parsing…' : 'Upload & parse'}
           </button>

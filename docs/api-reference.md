@@ -64,7 +64,7 @@ Fetches all trackings for the job, then for each profile reads the cached `job_d
       "first_name": "Alice",
       "last_name": "Martin",
       "email": "alice@example.com",
-      "score": 0.83,
+      "score": 0.88,
       "bonus": 0.05,
       "stage": "interview",
       "tracking_key": "..."
@@ -72,6 +72,8 @@ Fetches all trackings for the job, then for each profile reads the cached `job_d
   ]
 }
 ```
+
+> `score` in the list response is the pre-computed total (`base_score + ai_adjustment + bonus`), capped at 1.0.
 
 ---
 
@@ -89,10 +91,12 @@ Upload a PDF resume. Creates a HRFlow profile and, if `job_key` is provided, cre
 { "ok": true, "profile_key": "xyz789", "name": "Bob Durand", "email": "bob@example.com" }
 ```
 
+> Grading and synthesis are **not** triggered by this endpoint. They are initiated by the caller (frontend) in the background after upload completes.
+
 ---
 
 ### `GET /api/candidates/{profile_key}`
-Return the full HRFlow profile object (info, skills, experiences, educations, attachments, tags…).
+Return the full HRFlow profile object (info, skills, experiences, educations, attachments, tags, metadatas…).
 
 ---
 
@@ -101,23 +105,13 @@ Read the stored score for a candidate on a specific job from profile tags.
 
 **Response**
 ```json
-{ "job_key": "...", "score": 0.78, "bonus": 0.0 }
-```
-
----
-
-### `POST /api/candidates/{profile_key}/score`
-Store a computed score in the candidate's profile tags.
-
-**Body**
-```json
-{ "job_key": "...", "score": 0.78, "bonus": 0.0 }
+{ "job_key": "...", "base_score": 0.65, "ai_adjustment": 0.12, "bonus": 0.0 }
 ```
 
 ---
 
 ### `PATCH /api/candidates/{profile_key}/bonus`
-Update the HR bonus for a candidate on a specific job (preserves existing base score).
+Update the HR bonus for a candidate on a specific job (preserves existing scores).
 
 **Body**
 ```json
@@ -126,10 +120,55 @@ Update the HR bonus for a candidate on a specific job (preserves existing base s
 
 ---
 
+### `GET /api/candidates/{profile_key}/documents?job_key=...`
+List extra documents attached to a candidate for a specific job.
+
+**Response**
+```json
+{
+  "documents": [
+    {
+      "id": "extra_doc_abc123_1711634400",
+      "filename": "interview_notes.txt",
+      "content": "Candidate demonstrated...",
+      "uploaded_by": "hr@company.com",
+      "uploaded_at": "2026-03-28T14:00:00Z",
+      "delta": 0.08,
+      "delta_rationale": "Document reveals strong leadership experience directly relevant to the role."
+    }
+  ]
+}
+```
+
+> `delta` and `delta_rationale` are `null` on newly uploaded documents until grading runs.
+
+---
+
+### `POST /api/candidates/{profile_key}/documents`
+Add a new text document to a candidate's profile for a specific job.
+
+**Body**
+```json
+{
+  "job_key": "abc123",
+  "filename": "interview_notes.txt",
+  "content": "Full text content..."
+}
+```
+
+**Response**
+```json
+{ "ok": true, "id": "extra_doc_abc123_1711634400" }
+```
+
+---
+
 ## AI — `/api/ai`
 
 ### `POST /api/ai/grade`
-Full grading pipeline. Fetches HRFlow base score + upskilling data, calls LLM for adjusted score, stores score tag, then immediately generates and stores synthesis.
+Score calculation pipeline. Fetches or reuses cached HRFlow base score, scores any newly added extra documents via LLM, and stores updated scores in the profile tag.
+
+Returns immediately — synthesis is **not** included. The frontend triggers synthesis separately via `POST /api/ai/synthesize`.
 
 **Body**
 ```json
@@ -140,16 +179,19 @@ Full grading pipeline. Fetches HRFlow base score + upskilling data, calls LLM fo
 ```json
 {
   "base_score": 0.65,
-  "final_score": 0.78,
-  "rationale": "Strong React experience with minor gap in testing frameworks.",
-  "upskilling": { "strengths": [...], "weaknesses": [...], "skill_gaps": [...] }
+  "ai_adjustment": 0.12
 }
 ```
+
+| Field | Description |
+|-------|-------------|
+| `base_score` | HRFlow native score (cached from first grade; not re-fetched on subsequent calls) |
+| `ai_adjustment` | Sum of per-document LLM deltas, capped at ±0.3. Only new documents (no stored delta) are scored. |
 
 ---
 
 ### `GET /api/ai/synthesis?job_key=...&profile_key=...`
-Return stored synthesis. Checks in-memory cache first, then HRFlow profile tag. Returns `null` if not yet generated.
+Return stored synthesis from the candidate's HRFlow profile tag. Returns `null` if not yet generated.
 
 **Response** — synthesis object or `null`
 ```json
@@ -165,17 +207,19 @@ Return stored synthesis. Checks in-memory cache first, then HRFlow profile tag. 
 ---
 
 ### `POST /api/ai/synthesize`
-(Re-)generate synthesis, store it in HRFlow profile tag and in-memory cache, return result.
+(Re-)generate synthesis using job, profile, tracking, and upskilling data. Stores result in HRFlow profile tag and returns it.
 
 **Body**
 ```json
 { "job_key": "...", "profile_key": "..." }
 ```
 
+**Response** — synthesis object (same schema as `GET /api/ai/synthesis`)
+
 ---
 
 ### `POST /api/ai/ask`
-Generate tailored interview questions for a candidate / job pair.
+Generate tailored interview questions for a candidate / job pair. Not persisted.
 
 **Body**
 ```json
