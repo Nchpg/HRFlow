@@ -380,30 +380,54 @@ export default function DocumentsTab({ profileKey, jobKey, onGraded, onProcessin
   }, [documents])
 
   const handleSend = async (filename, content) => {
-    await uploadExtraDocument(profileKey, jobKey, filename, content)
-    const data = await getExtraDocuments(profileKey, jobKey)
-    setDocuments(data.documents || [])
+    const result = await uploadExtraDocument(profileKey, jobKey, filename, content)
+    // Optimistically append — don't wait for HRFlow indexing
+    const optimistic = {
+      id: result.id || `_opt_${Date.now()}`,
+      filename: filename.trim() || 'document',
+      content,
+      uploaded_at: new Date().toISOString(),
+      delta: null,
+      delta_rationale: null,
+    }
+    setDocuments((prev) => [...prev, optimistic])
     // Auto re-grade then synthesize — onGraded owns the full chain and clears processing
     onProcessingChange?.(profileKey, 'Grading…')
     try {
-      const result = await gradeCandidate(jobKey, profileKey)
-      await onGraded?.(result)  // awaited: score update → synthesis → processing cleared
+      const gradeResult = await gradeCandidate(jobKey, profileKey)
+      await onGraded?.(gradeResult)  // awaited: score update → synthesis → processing cleared
     } catch (e) {
       console.error('auto-grade failed:', e)
       onProcessingChange?.(profileKey, null)
     }
+    // Re-fetch after grading to pick up delta / delta_rationale
+    getExtraDocuments(profileKey, jobKey)
+      .then((data) => setDocuments(data.documents || []))
+      .catch(console.error)
   }
 
   const handleFileUpload = async (file) => {
     onProcessingChange?.(profileKey, 'Processing file…')
     try {
-      await uploadExtraDocumentFile(profileKey, jobKey, file)
-      const data = await getExtraDocuments(profileKey, jobKey)
-      setDocuments(data.documents || [])
+      const uploaded = await uploadExtraDocumentFile(profileKey, jobKey, file)
+      // Optimistically append extracted content immediately
+      const optimistic = {
+        id: uploaded.id || `_opt_${Date.now()}`,
+        filename: file.name,
+        content: uploaded.content || '',
+        uploaded_at: new Date().toISOString(),
+        delta: null,
+        delta_rationale: null,
+      }
+      setDocuments((prev) => [...prev, optimistic])
       
       onProcessingChange?.(profileKey, 'Grading…')
       const result = await gradeCandidate(jobKey, profileKey)
       await onGraded?.(result)
+      // Re-fetch after grading to pick up delta / delta_rationale
+      getExtraDocuments(profileKey, jobKey)
+        .then((data) => setDocuments(data.documents || []))
+        .catch(console.error)
     } catch (e) {
       console.error('file upload/processing failed:', e)
       onProcessingChange?.(profileKey, null)
