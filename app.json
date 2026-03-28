@@ -1,0 +1,16 @@
+{
+  "$schema": "../../schemas/app.schema.json",
+  "name": "HEpiR — HR Evolution",
+  "description": "AI-powered recruitment dashboard. Ranks candidates per job using HrFlow scoring combined with an LLM adjustment layer, auto-generates structured synthesis reports, and lets HR attach documents (PDF, DOCX, audio) that feed back into the score.",
+  "credentials": {
+    "source_keys": [],
+    "board_keys": [],
+    "algorithm_key": ""
+  },
+  "settings": {
+    "team_name": "HEpiR",
+    "theme_color": "#1264a3",
+    "custom_filters": [],
+    "filters": []
+  }
+}
