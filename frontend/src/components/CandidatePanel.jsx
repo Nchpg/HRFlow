@@ -46,6 +46,13 @@ const s = {
     fontSize: '1rem',
     fontWeight: 700,
     flexShrink: 0,
+    overflow: 'hidden',
+  },
+  avatarImg: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+    borderRadius: '50%',
   },
   headerInfo: { flex: 1, minWidth: 0 },
   name: { fontWeight: 700, fontSize: '1.0625rem', color: 'var(--text)' },
@@ -200,6 +207,7 @@ export default function CandidatePanel({ candidateRef, job, onClose }) {
   if (!candidateRef) return null
 
   const info = profile?.info || {}
+  const pictureUrl = info.picture || null
   const initials = `${candidateRef.first_name?.[0] || ''}${candidateRef.last_name?.[0] || ''}`.toUpperCase() || '?'
   const fullName = `${candidateRef.first_name} ${candidateRef.last_name}`.trim()
   const totalScore = candidateRef.score !== null && candidateRef.score !== undefined
@@ -216,7 +224,11 @@ export default function CandidatePanel({ candidateRef, job, onClose }) {
         <div style={s.drawer} onClick={(e) => e.stopPropagation()}>
           {/* Header */}
           <div style={s.header}>
-            <div style={s.avatar}>{initials}</div>
+            <div style={s.avatar}>
+              {pictureUrl
+                ? <img src={pictureUrl} alt={fullName} style={s.avatarImg} onError={(e) => { e.target.style.display = 'none' }} />
+                : initials}
+            </div>
             <div style={s.headerInfo}>
               <div style={s.name}>{fullName || candidateRef.profile_key}</div>
               <div style={s.email}>{info.email || candidateRef.email || ''}</div>

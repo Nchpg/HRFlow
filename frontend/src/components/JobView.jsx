@@ -128,6 +128,7 @@ const s = {
     fontSize: '.75rem',
     fontWeight: 700,
     flexShrink: 0,
+    overflow: 'hidden',
   },
   nameCell: {
     display: 'flex',
@@ -190,6 +191,7 @@ export default function JobView({ job, onSelectCandidate }) {
                 first_name: info.first_name || '',
                 last_name: info.last_name || '',
                 email: info.email || '',
+                picture: info.picture || '',
                 score: null,
                 bonus: 0,
                 stage: '',
@@ -300,7 +302,11 @@ export default function JobView({ job, onSelectCandidate }) {
                     <td style={{ ...s.td, color: 'var(--text-muted)', fontSize: '.75rem' }}>{i + 1}</td>
                     <td style={s.td}>
                       <div style={s.nameCell}>
-                        <div style={s.avatar}>{initials}</div>
+                        <div style={s.avatar}>
+                          {c.picture
+                            ? <img src={c.picture} alt={initials} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} onError={(e) => { e.target.style.display = 'none' }} />
+                            : initials}
+                        </div>
                         <div>
                           <div style={{ fontWeight: 500 }}>{c.first_name} {c.last_name}</div>
                           {c.email && <div style={{ fontSize: '.75rem', color: 'var(--text-muted)' }}>{c.email}</div>}
