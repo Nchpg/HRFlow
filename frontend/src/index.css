@@ -1,0 +1,140 @@
+/* ── Reset & base ──────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  /* Sidebar (Slack-dark) */
+  --sidebar-bg:      #1a1d21;
+  --sidebar-hover:   #27292d;
+  --sidebar-active:  #1164a3;
+  --sidebar-text:    #c9cdd2;
+  --sidebar-muted:   #696f7a;
+  --sidebar-border:  #2d3035;
+
+  /* Main content */
+  --bg:              #f8f8f8;
+  --surface:         #ffffff;
+  --border:          #e0e0e0;
+  --text:            #1d1c1d;
+  --text-muted:      #616061;
+
+  /* Accent */
+  --accent:          #1264a3;
+  --accent-hover:    #0b4f8a;
+
+  /* Scores */
+  --score-high:      #2bac76;
+  --score-mid:       #e8a838;
+  --score-low:       #e01e5a;
+
+  /* Misc */
+  --radius:          6px;
+  --radius-lg:       10px;
+  --shadow:          0 1px 3px rgba(0,0,0,.12);
+  --shadow-md:       0 4px 12px rgba(0,0,0,.15);
+
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+body {
+  background: var(--bg);
+  height: 100dvh;
+  overflow: hidden;
+}
+
+#root {
+  width: 100%;
+  height: 100dvh;
+}
+
+/* ── Typography helpers ────────────────────────────────────────────────── */
+h1 { font-size: 1.375rem; font-weight: 700; }
+h2 { font-size: 1.0625rem; font-weight: 600; }
+h3 { font-size: .9375rem;  font-weight: 600; }
+
+/* ── Scrollbars ────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 3px; }
+
+/* ── Button base ───────────────────────────────────────────────────────── */
+button {
+  cursor: pointer;
+  border: none;
+  border-radius: var(--radius);
+  font-family: inherit;
+  font-size: .875rem;
+  font-weight: 500;
+  transition: background .15s, opacity .15s;
+}
+button:disabled { opacity: .5; cursor: not-allowed; }
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  padding: .55rem 1.1rem;
+}
+.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-muted);
+  padding: .5rem .9rem;
+  border: 1px solid var(--border);
+}
+.btn-ghost:hover:not(:disabled) { background: var(--bg); color: var(--text); }
+
+/* ── Score badge ───────────────────────────────────────────────────────── */
+.score-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 60px;
+  padding: .25rem .65rem;
+  border-radius: 99px;
+  font-size: .8125rem;
+  font-weight: 600;
+  color: #fff;
+}
+.score-badge.high  { background: var(--score-high); }
+.score-badge.mid   { background: var(--score-mid);  }
+.score-badge.low   { background: var(--score-low);  }
+.score-badge.none  { background: #9e9e9e; }
+
+/* ── Verdict chip ──────────────────────────────────────────────────────── */
+.verdict { font-size: .75rem; font-weight: 600; padding: .2rem .6rem; border-radius: 99px; }
+.verdict.strong_yes { background:#d4edda; color:#155724; }
+.verdict.yes        { background:#cce5ff; color:#004085; }
+.verdict.maybe      { background:#fff3cd; color:#856404; }
+.verdict.no         { background:#f8d7da; color:#721c24; }
+
+/* ── Spinner ───────────────────────────────────────────────────────────── */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner {
+  width: 20px; height: 20px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+  margin: auto;
+}
+
+/* ── Drawer overlay ────────────────────────────────────────────────────── */
+.drawer-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.35);
+  z-index: 100;
+  display: flex;
+  justify-content: flex-end;
+}
+.drawer {
+  background: var(--surface);
+  width: min(780px, 95vw);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-md);
+  overflow-y: auto;
+}

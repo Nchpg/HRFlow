@@ -1,0 +1,29 @@
+services:
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    volumes:
+      - ./backend:/app:z
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_URL=http://backend:8080
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app:z
+      - frontend_nm:/app/node_modules
+
+volumes:
+  frontend_nm:
