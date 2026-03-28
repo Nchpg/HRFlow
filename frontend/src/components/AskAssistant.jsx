@@ -61,34 +61,64 @@ const s = {
   }),
 }
 
+const CATEGORY_ORDER = ['Technical', 'Behavioral', 'Motivation']
+
 export default function AskAssistant({ job, candidateRef, onClose, inline = false }) {
   const [questions, setQuestions] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
   useEffect(() => {
+    let ignore = false
     setLoading(true)
-    setQuestions([])
     setError(null)
+
     askQuestions(job.key, candidateRef.profile_key)
-      .then((data) => setQuestions(data.questions || []))
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false))
+      .then((data) => {
+        if (!ignore) {
+          const sorted = (data.questions || []).sort((a, b) => {
+            const idxA = CATEGORY_ORDER.indexOf(a.category)
+            const idxB = CATEGORY_ORDER.indexOf(b.category)
+            return (idxA === -1 ? 99 : idxA) - (idxB === -1 ? 99 : idxB)
+          })
+          setQuestions(sorted)
+        }
+      })
+      .catch((e) => {
+        if (!ignore) setError(e.message)
+      })
+      .finally(() => {
+        if (!ignore) setLoading(false)
+      })
+
+    return () => {
+      ignore = true
+    }
   }, [job.key, candidateRef.profile_key])
 
   const questionList = (
     <>
-      {loading && <div style={{ textAlign: 'center', padding: 40 }}><div className="spinner" /></div>}
-      {error && <div style={{ color: 'var(--score-low)', padding: 20 }}>Error: {error}</div>}
-      {!loading && !error && questions.length === 0 && (
-        <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 30 }}>No questions generated.</div>
-      )}
-      {questions.map((q, i) => (
-        <div key={i} style={{ ...s.question, background: CATEGORY_COLOR[q.category] || '#f5f5f5' }}>
-          <div style={s.categoryBadge(q.category)}>{q.category}</div>
-          <div>{q.question}</div>
+      {loading && (
+        <div style={{ textAlign: 'center', padding: 40 }}>
+          <div className="spinner" />
+          <div style={{ marginTop: 10, fontSize: '.8rem', color: 'var(--text-muted)' }}>Generating tailored questions...</div>
         </div>
-      ))}
+      )}
+      {error && <div style={{ color: 'var(--score-low)', padding: 20 }}>Error: {error}</div>}
+      {!loading && !error && (
+        <>
+          {questions.length === 0 ? (
+            <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 30 }}>No questions generated.</div>
+          ) : (
+            questions.map((q, i) => (
+              <div key={i} style={{ ...s.question, background: CATEGORY_COLOR[q.category] || '#f5f5f5' }}>
+                <div style={s.categoryBadge(q.category)}>{q.category}</div>
+                <div>{q.question}</div>
+              </div>
+            ))
+          )}
+        </>
+      )}
     </>
   )
 

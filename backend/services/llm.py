@@ -173,8 +173,13 @@ async def synthesize_candidate(
 # Ask — interview question generator
 # ---------------------------------------------------------------------------
 
-ASK_SYSTEM = """You are an expert interviewer. Given a job description and a candidate profile,
+ASK_SYSTEM = """You are an expert interviewer. Given a job description, a candidate profile, and supplementary documents (like interview transcripts or technical tests),
 generate targeted interview questions that probe the candidate's fit, technical skills, and motivation.
+
+CRITICAL INSTRUCTIONS:
+1. FOCUS ON THE JOB: Every question must be directly relevant to the specific job title and job description provided.
+2. USE ALL EVIDENCE: Use the candidate's CV/profile AND the extra documents to identify gaps, contradictions, or areas needing deeper investigation relative to the job requirements.
+3. BE SPECIFIC: Avoid generic questions. Refer to specific skills or experiences found in the job description or candidate profile.
 
 Respond ONLY with valid JSON:
 {
@@ -189,7 +194,7 @@ def _skill_name(s) -> str:
     return s.get("name", "") if isinstance(s, dict) else str(s)
 
 
-async def generate_questions(job: dict, profile: dict) -> dict:
+async def generate_questions(job: dict, profile: dict, extra_docs: list[dict] = None) -> dict:
     """Generate tailored interview questions for a candidate."""
     user_content = json.dumps(
         {
@@ -204,6 +209,13 @@ async def generate_questions(job: dict, profile: dict) -> dict:
                     "company": (e.get("company") or {}).get("name", "") if isinstance(e.get("company"), dict) else (e.get("company") or ""),
                 }
                 for e in profile.get("experiences", [])
+            ],
+            "extra_documents": [
+                {
+                    "filename": d.get("filename", ""),
+                    "content": d.get("content", ""),
+                }
+                for d in (extra_docs or [])
             ],
         },
         ensure_ascii=False,

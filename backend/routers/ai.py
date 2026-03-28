@@ -134,9 +134,11 @@ async def ask_questions(req: AskRequest):
     """Generate tailored interview questions for a candidate."""
     try:
         job, profile, _ = await _fetch_context(req.job_key, req.profile_key)
-        questions = await llm.generate_questions(job, profile)
+        extra_docs = hrflow.get_extra_documents(profile, req.job_key)
+        questions = await llm.generate_questions(job, profile, extra_docs)
         return questions
     except Exception as e:
+        print(f"ask error: {e}", flush=True)
         raise HTTPException(status_code=502, detail=str(e))
 
 
