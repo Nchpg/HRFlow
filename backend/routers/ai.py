@@ -117,9 +117,10 @@ async def synthesize_candidate(req: SynthesizeRequest):
 
         raw_tag = hrflow.extract_tag(profile, f"job_data_{req.job_key}")
         final_score = json.loads(raw_tag).get("score", 0.5) if raw_tag else 0.5
+        extra_docs = hrflow.get_extra_documents(profile, req.job_key)
 
         synthesis = await llm.synthesize_candidate(
-            job, profile, tracking or {}, upskilling, final_score
+            job, profile, tracking or {}, upskilling, final_score, extra_docs
         )
         await _patch_tag(req.profile_key, profile, f"synthesis_{req.job_key}", json.dumps(synthesis))
         return synthesis

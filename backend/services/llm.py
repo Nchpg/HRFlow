@@ -40,21 +40,22 @@ Your task: assign a delta score (-0.2 to +0.2) representing the net signal THIS 
 
 Context provided:
 - The single document to score
-- All other already-attached documents (for cross-document analysis only)
+- The candidate's CV/Profile claims (skills, experiences)
+- All other already-attached documents (for cross-document analysis)
 
 Scoring rules:
 - POSITIVE delta (+0.01 to +0.2): document reveals strengths, achievements, or qualities that genuinely support the candidate's fit.
 - NEAR ZERO (0.0): document is neutral, redundant, or doesn't add meaningful new signal.
-- NEGATIVE delta (-0.01 to -0.2): document contains an explicit red flag OR directly CONTRADICTS a specific positive claim made in another document (e.g., one doc praises leadership, this one describes a dismissal for misconduct).
+- NEGATIVE delta (-0.01 to -0.2): document contains an explicit red flag OR directly CONTRADICTS a specific claim made in the CV or another document (e.g., CV says they are "Expert in Python" but an interview transcript shows they don't know basic syntax).
 
 Critical: a document that is simply "less impressive" than another is NOT a contradiction — assign 0 or a small positive, never negative. Only genuine factual contradictions or explicit red flags warrant a negative delta.
 
-Do NOT re-evaluate the candidate against the job — HRFlow already handles that. Only assess what this specific document uniquely adds or reveals.
+Do NOT re-evaluate the candidate against the job — HRFlow already handles that. Only assess what this specific document uniquely adds, reveals, or contradicts.
 
 Respond ONLY with valid JSON:
 {
   "delta": <float between -0.2 and 0.2>,
-  "rationale": "<one sentence explaining this document's individual contribution>"
+  "rationale": "<one sentence explaining this document's individual contribution, explicitly mentioning if it confirms or contradicts a CV claim>"
 }"""
 
 
@@ -70,6 +71,10 @@ async def score_single_document(
     user_content = json.dumps({
         "job_title": job.get("name", ""),
         "candidate_name": f"{profile.get('info', {}).get('first_name', '')} {profile.get('info', {}).get('last_name', '')}",
+        "cv_claims": {
+            "skills": [_skill_name(s) for s in profile.get("skills", [])],
+            "experiences": [e.get("title") for e in profile.get("experiences", [])],
+        },
         "document_to_score": {
             "filename": document.get("filename", ""),
             "content": document.get("content", ""),
@@ -93,20 +98,26 @@ async def score_single_document(
 # ---------------------------------------------------------------------------
 
 SYNTHESIS_SYSTEM = """You are an expert HR analyst. Given a job, a candidate profile, their
-application data, and scoring analysis, write a concise structured recruitment summary.
+application data, extra documents (like interview transcripts or technical tests), and scoring analysis,
+write a concise structured recruitment summary.
+
+Critical Instruction on Contradictions:
+- Compare the candidate's claims (from CV/profile) with evidence from extra documents.
+- If an extra document (e.g., an interview) reveals a weakness or lack of skill that contradicts a claim in the CV,
+  PRIORITIZE the evidence from the extra document and explicitly mention this contradiction in the summary.
+- Adjust strengths and weaknesses accordingly: what was a "strength" in the CV might become a "weakness" if the
+  interview evidence shows they actually lack that skill.
 
 Rules for strengths and weaknesses:
-- strengths: skills, experiences, or qualities that directly match or exceed the job requirements.
-  Additional specialties or skills beyond what the job requires are NEUTRAL or POSITIVE — list them
-  as strengths if they add value, or omit them. Never treat extra skills as weaknesses.
+- strengths: skills, experiences, or qualities that directly match or exceed the job requirements,
+  verified across ALL available documents.
 - weaknesses: ONLY skills or experiences that are explicitly required by the job and clearly missing
-  from the candidate. Do not list skills the candidate has in excess, different specialisations,
-  or areas unrelated to the job requirements.
+  OR shown to be lacking during the evaluation process (interviews, tests, etc.).
 - upskilling: concrete learning recommendations to close actual gaps in required skills only.
 
 Respond ONLY with valid JSON:
 {
-  "summary": "<2-3 sentence narrative>",
+  "summary": "<2-3 sentence narrative, explicitly noting any major contradictions found between the CV and extra documents>",
   "strengths": ["<strength 1>", "<strength 2>", ...],
   "weaknesses": ["<weakness 1>", ...],
   "upskilling": ["<recommendation 1>", ...],
@@ -120,6 +131,7 @@ async def synthesize_candidate(
     tracking: dict,
     upskilling: dict,
     final_score: float,
+    extra_docs: list[dict] = None,
 ) -> dict:
     """Generate a structured candidate synthesis."""
     user_content = json.dumps(
@@ -135,6 +147,15 @@ async def synthesize_candidate(
             ],
             "cover_letter": tracking.get("message", ""),
             "quiz_answers": tracking.get("answers", []),
+            "extra_documents": [
+                {
+                    "filename": d.get("filename", ""),
+                    "content": d.get("content", ""),
+                    "ai_delta": d.get("delta", 0.0),
+                    "ai_rationale": d.get("delta_rationale", "")
+                }
+                for d in (extra_docs or [])
+            ],
             "strengths": upskilling.get("strengths", []),
             "weaknesses": upskilling.get("weaknesses", []),
             "skill_gaps": upskilling.get("skill_gaps", []),
