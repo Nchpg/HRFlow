@@ -55,19 +55,23 @@ async def grade_candidate(req: GradeRequest):
             }))
             print(f"[grade] base_score={base_score} fetched from HRFlow", flush=True)
 
-        # Score each document individually — total adjustment = sum of deltas, capped ±0.3
+        # Score only documents that don't have a stored delta yet — existing deltas are stable
         if extra_docs:
-            scored_docs = []
-            for i, doc in enumerate(extra_docs):
-                other_docs = [d for j, d in enumerate(extra_docs) if j != i]
+            already_scored = [d for d in extra_docs if d.get("delta") is not None]
+            to_score = [d for d in extra_docs if d.get("delta") is None]
+            newly_scored = []
+            for doc in to_score:
+                other_docs = [d for d in extra_docs if d["id"] != doc["id"]]
                 score_result = await llm.score_single_document(job, profile, doc, other_docs)
-                scored_docs.append({**doc, "delta": score_result["delta"], "rationale": score_result["rationale"]})
-                print(f"[grade] doc '{doc.get('filename')}' delta={score_result['delta']} → {score_result['rationale']}", flush=True)
-            await hrflow.update_documents_with_deltas(req.profile_key, req.job_key, scored_docs)
-            ai_adjustment = round(max(-0.3, min(0.3, sum(d["delta"] for d in scored_docs))), 3)
+                newly_scored.append({**doc, "delta": score_result["delta"], "rationale": score_result["rationale"]})
+                print(f"[grade] new doc '{doc.get('filename')}' delta={score_result['delta']} → {score_result['rationale']}", flush=True)
+            if newly_scored:
+                await hrflow.update_documents_with_deltas(req.profile_key, req.job_key, newly_scored)
+            all_deltas = [d["delta"] for d in already_scored] + [d["delta"] for d in newly_scored]
+            ai_adjustment = round(max(-0.3, min(0.3, sum(all_deltas))), 3)
         else:
             ai_adjustment = 0.0
-        print(f"[grade] total ai_adjustment={ai_adjustment}", flush=True)
+        print(f"[grade] total ai_adjustment={ai_adjustment} ({len(already_scored) if extra_docs else 0} cached, {len(newly_scored) if extra_docs else 0} new)", flush=True)
 
         # Persist updated scores — return immediately so the frontend can update the display
         # Synthesis is triggered separately by the frontend after this response
