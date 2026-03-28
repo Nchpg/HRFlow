@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { getExtraDocuments, uploadExtraDocument, gradeCandidate } from '../services/api'
+import { getExtraDocuments, uploadExtraDocument, uploadExtraDocumentFile, gradeCandidate } from '../services/api'
 
 function formatDate(iso) {
   if (!iso) return ''
@@ -195,11 +195,12 @@ const sb = {
 // Document input (composer)
 // ---------------------------------------------------------------------------
 
-function DocumentInput({ onSend }) {
+function DocumentInput({ onSend, onUploadFile }) {
   const [filename, setFilename] = useState('')
   const [content, setContent] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState(null)
+  const fileInputRef = useRef(null)
 
   const handleSend = async () => {
     if (!content.trim() || sending) return
@@ -213,6 +214,21 @@ function DocumentInput({ onSend }) {
       setError(e.message)
     } finally {
       setSending(false)
+    }
+  }
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files[0]
+    if (!file || sending) return
+    setSending(true)
+    setError(null)
+    try {
+      await onUploadFile(file)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSending(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
 
@@ -240,7 +256,24 @@ function DocumentInput({ onSend }) {
       />
       {error && <div style={si.error}>{error}</div>}
       <div style={si.footer}>
-        <span style={si.hint}>Ctrl+Enter to send</span>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input
+            type="file"
+            ref={fileInputRef}
+            style={{ display: 'none' }}
+            onChange={handleFileChange}
+            accept=".pdf,.docx,.doc,.mp3,.m4a,.wav,.txt"
+          />
+          <button
+            className="btn-secondary"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={sending}
+            title="Upload audio (mp3, m4a), text (pdf, docx, txt)"
+          >
+            📎 {sending ? '...' : 'Upload File'}
+          </button>
+          <span style={si.hint}>Ctrl+Enter to send</span>
+        </div>
         <button
           className="btn-primary"
           onClick={handleSend}
@@ -337,6 +370,23 @@ export default function DocumentsTab({ profileKey, jobKey, onGraded, onProcessin
     }
   }
 
+  const handleFileUpload = async (file) => {
+    onProcessingChange?.(profileKey, 'Processing file…')
+    try {
+      await uploadExtraDocumentFile(profileKey, jobKey, file)
+      const data = await getExtraDocuments(profileKey, jobKey)
+      setDocuments(data.documents || [])
+      
+      onProcessingChange?.(profileKey, 'Grading…')
+      const result = await gradeCandidate(jobKey, profileKey)
+      await onGraded?.(result)
+    } catch (e) {
+      console.error('file upload/processing failed:', e)
+      onProcessingChange?.(profileKey, null)
+      throw e
+    }
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
       <div ref={listRef} style={sd.list}>
@@ -355,7 +405,7 @@ export default function DocumentsTab({ profileKey, jobKey, onGraded, onProcessin
         )}
       </div>
 
-      <DocumentInput onSend={handleSend} />
+      <DocumentInput onSend={handleSend} onUploadFile={handleFileUpload} />
 
       {viewingDoc && (
         <TextViewerPanel doc={viewingDoc} onClose={() => setViewingDoc(null)} />

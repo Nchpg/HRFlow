@@ -1,5 +1,6 @@
 """LLM service using an OpenAI-compatible API (OpenRouter by default)."""
 
+import base64
 import json
 from openai import AsyncOpenAI
 from config import settings
@@ -26,6 +27,43 @@ async def _chat(system: str, user: str) -> str:
             {"role": "user", "content": user},
         ],
         temperature=0.3,
+    )
+    return response.choices[0].message.content.strip()
+
+
+async def transcribe_audio(audio_bytes: bytes, filename: str) -> str:
+    """Transcribe audio using OpenRouter multimodal capabilities."""
+    client = _get_client()
+    # Base64 encode the audio data
+    encoded = base64.b64encode(audio_bytes).decode("utf-8")
+    
+    # Extract format from filename (default to mp3 if not found)
+    fmt = filename.split(".")[-1].lower()
+    if fmt not in ["mp3", "m4a", "wav", "aac", "ogg", "flac", "aiff"]:
+        fmt = "mp3"
+
+    # Use a multimodal model for audio transcription.
+    # Google's gemini-2.0-flash is great for this and often has a free tier.
+    # We use a specific model that supports audio input.
+    model = "google/gemini-2.0-flash-001"
+    
+    response = await client.chat.completions.create(
+        model=model,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Please provide a clean transcription of this audio file. Output only the transcript text."},
+                    {
+                        "type": "input_audio",
+                        "input_audio": {
+                            "data": encoded,
+                            "format": fmt,
+                        }
+                    }
+                ]
+            }
+        ],
     )
     return response.choices[0].message.content.strip()
 

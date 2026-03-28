@@ -66,3 +66,18 @@ export const getExtraDocuments = (profileKey, jobKey) =>
   request('GET', `/candidates/${profileKey}/documents?job_key=${jobKey}`)
 export const uploadExtraDocument = (profileKey, jobKey, filename, content) =>
   request('POST', `/candidates/${profileKey}/documents`, { job_key: jobKey, filename, content })
+
+export async function uploadExtraDocumentFile(profileKey, jobKey, file) {
+  const form = new FormData()
+  form.append('job_key', jobKey)
+  form.append('file', file)
+  const res = await fetch(`${BASE}/candidates/${profileKey}/documents/file`, {
+    method: 'POST',
+    body: form
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(err.detail || 'Upload failed')
+  }
+  return res.json()
+}

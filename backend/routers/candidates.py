@@ -1,9 +1,12 @@
 """Candidates router — profile data, score management, and resume upload."""
 
+import io
 import json
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
-from services import hrflow
+from services import hrflow, llm
+from pypdf import PdfReader
+from docx import Document as DocxDocument
 
 router = APIRouter()
 
@@ -147,4 +150,47 @@ async def add_document(profile_key: str, payload: DocumentPayload):
         )
         return {"ok": True, "id": doc_id}
     except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@router.post("/{profile_key}/documents/file")
+async def add_document_file(
+    profile_key: str,
+    job_key: str = Form(...),
+    file: UploadFile = File(...)
+):
+    """Upload a file (PDF, Docx, Audio), transcribe/extract text, and save as document."""
+    filename = file.filename
+    ext = filename.lower().split(".")[-1]
+    
+    try:
+        content = await file.read()
+        extracted_text = ""
+        
+        if ext == "pdf":
+            reader = PdfReader(io.BytesIO(content))
+            extracted_text = "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
+        elif ext in ["docx", "doc"]:
+            # Need to install python-docx
+            doc = DocxDocument(io.BytesIO(content))
+            extracted_text = "\n".join([p.text for p in doc.paragraphs])
+        elif ext in ["mp3", "m4a", "wav", "aac", "ogg", "flac", "aiff"]:
+            extracted_text = await llm.transcribe_audio(content, filename)
+        else:
+            # Fallback for plain text files
+            try:
+                extracted_text = content.decode("utf-8")
+            except UnicodeDecodeError:
+                raise HTTPException(status_code=400, detail=f"Unsupported file format: {ext}")
+
+        if not extracted_text or not extracted_text.strip():
+            raise HTTPException(status_code=400, detail="No text could be extracted or transcribed from this file.")
+
+        doc_id = await hrflow.add_extra_document(
+            profile_key, job_key, filename, extracted_text
+        )
+        return {"ok": True, "id": doc_id, "content": extracted_text}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=502, detail=str(e))
