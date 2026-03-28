@@ -173,24 +173,31 @@ export default function Sidebar({ jobs, selectedJobKey, onSelectJob, loading, on
           {!loading && filtered.length === 0 && (
             <div style={{ color: 'var(--sidebar-muted)', fontSize: '.8rem', padding: '6px 10px' }}>No jobs found</div>
           )}
-          {filtered.map((job) => (
-            <div
-              key={job.key}
-              style={s.item(job.key === selectedJobKey)}
-              onClick={() => onSelectJob(job)}
-              onMouseEnter={(e) => {
-                if (job.key !== selectedJobKey) e.currentTarget.style.background = 'var(--sidebar-hover)'
-              }}
-              onMouseLeave={(e) => {
-                if (job.key !== selectedJobKey) e.currentTarget.style.background = 'transparent'
-              }}
-            >
-              <span style={s.dot} />
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {job.name || job.key}
-              </span>
-            </div>
-          ))}
+          {filtered.map((job) => {
+            const statusColors = {
+              open: '#2bac76',
+              on_hold: '#e8a838',
+              closed: '#e01e5a',
+            }
+            return (
+              <div
+                key={job.key}
+                style={s.item(job.key === selectedJobKey)}
+                onClick={() => onSelectJob(job)}
+                onMouseEnter={(e) => {
+                  if (job.key !== selectedJobKey) e.currentTarget.style.background = 'var(--sidebar-hover)'
+                }}
+                onMouseLeave={(e) => {
+                  if (job.key !== selectedJobKey) e.currentTarget.style.background = 'transparent'
+                }}
+              >
+                <span style={{ ...s.dot, background: statusColors[job.status] || 'var(--sidebar-muted)' }} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {job.name || job.key}
+                </span>
+              </div>
+            )
+          })}
         </div>
 
         {/* Divider + create job action */}

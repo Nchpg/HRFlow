@@ -37,6 +37,20 @@ async def list_jobs(limit: int = 30, page: int = 1) -> list[dict]:
         r.raise_for_status()
         data = r.json()
         jobs = (data.get("data") or {}).get("jobs", [])
+        # Enrich with status from tags
+        for job in jobs:
+            status_tag = extract_tag(job, "job_status")
+            if status_tag:
+                import json
+                try:
+                    s_data = json.loads(status_tag)
+                    job["status"] = s_data.get("status", "open")
+                    job["status_updated_at"] = s_data.get("updated_at")
+                except:
+                    job["status"] = "open"
+            else:
+                job["status"] = "open"
+        
         print(f"HRFlow list_jobs → total={data.get('meta', {}).get('total')} returned={len(jobs)}", flush=True)
         return jobs
 
@@ -48,6 +62,42 @@ async def get_job(job_key: str) -> dict:
             f"{BASE_URL}/job/indexing",
             headers=_headers(),
             params={"board_key": settings.hrflow_board_key, "key": job_key},
+            timeout=15,
+        )
+        r.raise_for_status()
+        job = r.json().get("data", {})
+        # Enrich status
+        status_tag = extract_tag(job, "job_status")
+        if status_tag:
+            import json
+            try:
+                s_data = json.loads(status_tag)
+                job["status"] = s_data.get("status", "open")
+                job["status_updated_at"] = s_data.get("updated_at")
+            except:
+                job["status"] = "open"
+        else:
+            job["status"] = "open"
+        return job
+
+
+_JOB_WRITABLE = {
+    "name", "summary", "location", "skills", "tags", "metadatas",
+    "ranges_date", "ranges_float", "sections", "url", "reference"
+}
+
+async def patch_job_tags(job_key: str, tags: list[dict]) -> dict:
+    """Update the tags field on a job (PUT with full mutable job payload)."""
+    job = await get_job(job_key)
+    payload: dict = {"board_key": settings.hrflow_board_key, "key": job_key, "tags": tags}
+    for field in _JOB_WRITABLE - {"tags"}:
+        if field in job and job[field] is not None:
+            payload[field] = job[field]
+    async with httpx.AsyncClient() as client:
+        r = await client.put(
+            f"{BASE_URL}/job/indexing",
+            headers={**_headers(), "Content-Type": "application/json"},
+            json=payload,
             timeout=15,
         )
         r.raise_for_status()
@@ -260,9 +310,9 @@ async def create_tracking(job_key: str, profile_key: str, stage: str = "applied"
 # Helpers
 # ---------------------------------------------------------------------------
 
-def extract_tag(profile: dict, name: str):
-    """Extract a tag value by name from a profile's tags list."""
-    for tag in profile.get("tags", []):
+def extract_tag(obj: dict, name: str):
+    """Extract a tag value by name from an object's (job or profile) tags list."""
+    for tag in obj.get("tags", []) or []:
         if tag.get("name") == name:
             return tag.get("value")
     return None
@@ -356,5 +406,87 @@ def build_job_tag(job_key: str, score: float, bonus: float = 0.0, base_score: fl
     import json
     return {
         "name": f"job_data_{job_key}",
-        "value": json.dumps({"job_key": job_key, "base_score": base_score, "score": score, "bonus": bonus}),
+        "value": json.dumps({
+            "job_key": job_key,
+            "base_score": base_score,
+            "ai_adjustment": score - (base_score or 0), # Simplified for build_job_tag if base_score is passed
+            "bonus": bonus
+        }),
     }
+
+# ---------------------------------------------------------------------------
+# Status & Stages Management
+# ---------------------------------------------------------------------------
+
+MANDATORY_STAGES = [
+    {"key": "applied", "label": "Applied", "color": "gray", "order": 0, "builtin": True},
+    {"key": "hired", "label": "Hired", "color": "green", "order": 999, "builtin": True},
+    {"key": "rejected", "label": "Rejected", "color": "red", "order": 1000, "builtin": True},
+]
+
+# Presets that HR can add easily
+PRESET_STAGES = [
+    {"key": "screening", "label": "Screening", "color": "blue"},
+    {"key": "interview", "label": "Interview", "color": "indigo"},
+    {"key": "technical_test", "label": "Technical Test", "color": "purple"},
+    {"key": "offer", "label": "Offer Sent", "color": "orange"},
+]
+
+async def get_job_stages(job_key: str) -> list[dict]:
+    """Return Applied + custom/preset stages + Hired + Rejected."""
+    import json
+    job = await get_job(job_key)
+    custom_raw = extract_tag(job, "custom_stages")
+    custom_stages = json.loads(custom_raw) if custom_raw else []
+    
+    # Custom stages are placed between Applied (0) and Hired (999)
+    # We ensure they have a valid order. If not, they follow Applied.
+    processed_custom = []
+    for i, s in enumerate(custom_stages):
+        processed_custom.append({
+            "builtin": False, 
+            **s, 
+            "order": s.get("order", i + 1)
+        })
+    
+    processed_custom.sort(key=lambda x: x["order"])
+    
+    # Re-normalize orders to be between 1 and 998
+    for i, s in enumerate(processed_custom):
+        s["order"] = i + 1
+
+    all_stages = [MANDATORY_STAGES[0]] + processed_custom + MANDATORY_STAGES[1:]
+    return all_stages
+
+
+async def update_job_status(job_key: str, status: str) -> dict:
+    """Update job operational status."""
+    import json
+    from datetime import datetime, timezone
+    job = await get_job(job_key)
+    existing_tags = [t for t in job.get("tags", []) if t.get("name") != "job_status"]
+    
+    updated_at = datetime.now(timezone.utc).isoformat()
+    new_tag = {
+        "name": "job_status",
+        "value": json.dumps({"status": status, "updated_at": updated_at})
+    }
+    await patch_job_tags(job_key, existing_tags + [new_tag])
+    return {"status": status, "updated_at": updated_at}
+
+
+async def update_candidate_stage(profile_key: str, job_key: str, stage: str) -> dict:
+    """Update candidate recruitment stage for a specific job."""
+    import json
+    from datetime import datetime, timezone
+    profile = await get_profile(profile_key)
+    tag_name = f"stage_{job_key}"
+    existing_tags = [t for t in profile.get("tags", []) if t.get("name") != tag_name]
+    
+    updated_at = datetime.now(timezone.utc).isoformat()
+    new_tag = {
+        "name": tag_name,
+        "value": json.dumps({"job_key": job_key, "stage": stage, "updated_at": updated_at})
+    }
+    await patch_profile_tags(profile_key, existing_tags + [new_tag])
+    return {"stage": stage, "updated_at": updated_at}

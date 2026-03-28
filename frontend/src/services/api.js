@@ -18,6 +18,12 @@ async function request(method, path, body) {
 export const getJobs = () => request('GET', '/jobs')
 export const getJob = (jobKey) => request('GET', `/jobs/${jobKey}`)
 export const getJobCandidates = (jobKey) => request('GET', `/jobs/${jobKey}/candidates`)
+export const updateJobStatus = (jobKey, status) => request('PATCH', `/jobs/${jobKey}/status`, { status })
+export const getJobStages = (jobKey) => request('GET', `/jobs/${jobKey}/stages`)
+export const createCustomStage = (jobKey, label, color) => request('POST', `/jobs/${jobKey}/stages`, { label, color })
+export const deleteCustomStage = (jobKey, stageKey) => request('DELETE', `/jobs/${jobKey}/stages/${stageKey}`)
+export const reorderCustomStages = (jobKey, order) => request('PATCH', `/jobs/${jobKey}/stages/reorder`, { order })
+export const getPresetStages = (jobKey) => request('GET', `/jobs/${jobKey}/stages/presets`)
 
 // ── Candidates ────────────────────────────────────────────────────────────
 export const getCandidate = (profileKey) => request('GET', `/candidates/${profileKey}`)
@@ -27,6 +33,8 @@ export const storeCandidateScore = (profileKey, jobKey, score, bonus = 0) =>
   request('POST', `/candidates/${profileKey}/score`, { job_key: jobKey, score, bonus })
 export const updateBonus = (profileKey, jobKey, bonus) =>
   request('PATCH', `/candidates/${profileKey}/bonus`, { job_key: jobKey, bonus })
+export const updateCandidateStage = (profileKey, jobKey, stage) =>
+  request('PATCH', `/candidates/${profileKey}/stage`, { job_key: jobKey, stage })
 
 // ── Populate ──────────────────────────────────────────────────────────────
 export async function uploadResume(file, jobKey) {

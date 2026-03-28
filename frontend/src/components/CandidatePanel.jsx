@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getCandidate, synthesizeCandidate, getStoredSynthesis, updateBonus } from '../services/api'
+import { getCandidate, synthesizeCandidate, getStoredSynthesis, updateBonus, getJobStages, updateCandidateStage } from '../services/api'
 import AskAssistant from './AskAssistant'
 import DocumentsTab from './DocumentsTab'
 
@@ -8,6 +8,27 @@ function scoreBadgeClass(score) {
   if (score >= 0.7) return 'high'
   if (score >= 0.45) return 'mid'
   return 'low'
+}
+
+function getStageColor(color) {
+  const colors = {
+    gray: '#f5f5f5',
+    blue: '#e3f2fd',
+    indigo: '#e8eaf6',
+    purple: '#f3e5f5',
+    orange: '#fff3e0',
+    green: '#e8f5e9',
+    red: '#ffebee',
+    teal: '#e0f2f1',
+    cyan: '#e0f7fa',
+    pink: '#fce4ec',
+    amber: '#fff8e1',
+    lime: '#f9fbe7',
+    sky: '#e1f5fe',
+    rose: '#fff1f1',
+    violet: '#f5f3ff',
+  }
+  return colors[color] || '#f5f5f5'
 }
 
 const s = {
@@ -133,9 +154,17 @@ const s = {
     fontSize: '.8rem',
     outline: 'none',
   },
+  stageSelect: {
+    fontSize: '.8rem',
+    padding: '4px 8px',
+    borderRadius: 'var(--radius)',
+    border: '1px solid var(--border)',
+    background: 'var(--surface)',
+    cursor: 'pointer',
+    outline: 'none',
+    maxWidth: 140,
+  },
 }
-
-const PIPELINE_STAGES = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired']
 
 export default function CandidatePanel({ candidateRef, job, onClose, onProcessingChange, processingStatus }) {
   const [profile, setProfile] = useState(null)
@@ -146,6 +175,9 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
   const [bonus, setBonus] = useState(candidateRef?.bonus || 0)
   const [bonusSaving, setBonusSaving] = useState(false)
   const [localScores, setLocalScores] = useState(null)
+  const [stages, setStages] = useState([])
+  const [currentStage, setCurrentStage] = useState(candidateRef?.stage || 'applied')
+  const [stageUpdating, setStageUpdating] = useState(false)
 
   useEffect(() => {
     if (!candidateRef || !job) return
@@ -155,23 +187,28 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
     setSynthesis(null)
     setLocalScores(null)
     setBonus(candidateRef.bonus || 0)
+    setCurrentStage(candidateRef.stage || 'applied')
+
     getCandidate(candidateRef.profile_key)
       .then(setProfile)
       .catch(console.error)
       .finally(() => setLoadingProfile(false))
+
     getStoredSynthesis(job.key, candidateRef.profile_key)
       .then(async (data) => {
         if (data) {
           setSynthesis(data)
         } else {
-          // No stored synthesis yet — generate and persist it now
           const generated = await synthesizeCandidate(job.key, candidateRef.profile_key)
           if (generated) setSynthesis(generated)
         }
       })
       .catch(console.error)
       .finally(() => setLoadingSynth(false))
-  // Use stable identifiers — avoids reload when parent refreshes candidateRef object reference
+    
+    getJobStages(job.key)
+      .then(data => setStages(data.stages))
+      .catch(console.error)
   }, [candidateRef?.profile_key, job?.key])
 
   const handleBonusSave = async () => {
@@ -183,6 +220,20 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
       console.error(e)
     } finally {
       setBonusSaving(false)
+    }
+  }
+
+  const handleStageChange = async (newStage) => {
+    if (!job || !candidateRef) return
+    setStageUpdating(true)
+    try {
+      await updateCandidateStage(candidateRef.profile_key, job.key, newStage)
+      setCurrentStage(newStage)
+      onStageChange?.(candidateRef.profile_key, newStage)
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setStageUpdating(false)
     }
   }
 
@@ -198,9 +249,7 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
     ? Math.min(1, Math.max(0, effectiveBaseScore + effectiveAiAdj + (parseFloat(bonus) || 0)))
     : null
 
-  const currentStageIdx = PIPELINE_STAGES.findIndex(
-    (st) => st.toLowerCase() === (candidateRef.stage || '').toLowerCase()
-  )
+  const currentStageIdx = stages.findIndex(st => st.key === currentStage)
 
   return (
     <>
@@ -220,15 +269,33 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
                 <span className={`score-badge ${scoreBadgeClass(totalScore)}`}>
                   {totalScore !== null ? `${Math.round(totalScore * 100)}%` : 'Not scored'}
                 </span>
+                {synthesis?.verdict && (
+                  <span className={`verdict ${synthesis.verdict}`}>{synthesis.verdict.replace('_', ' ')}</span>
+                )}
+
+                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: '.7rem', color: 'var(--text-muted)' }}>Stage:</span>
+                  <select
+                    style={s.stageSelect}
+                    value={currentStage}
+                    onChange={(e) => handleStageChange(e.target.value)}
+                    disabled={stageUpdating}
+                  >
+                    {stages.map(st => (
+                      <option key={st.key} value={st.key}>{st.label}</option>
+                    ))}
+                    {currentStageIdx === -1 && <option value={currentStage}>Unknown Stage</option>}
+                  </select>
+                </div>
               </div>
             </div>
             <button style={s.closeBtn} onClick={onClose}>✕</button>
           </div>
 
           {/* Pipeline progress */}
-          <PipelineProgress stages={PIPELINE_STAGES} currentIdx={currentStageIdx} />
+          <PipelineProgress stages={stages} currentIdx={currentStageIdx} />
 
-          {/* Processing status banner — visible regardless of active tab */}
+          {/* Processing status banner */}
           {(loadingSynth || processingStatus) && (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '7px 20px', fontSize: '.8rem', color: 'var(--accent)', background: '#f0f4ff', borderBottom: '1px solid var(--border)', lineHeight: 1 }}>
               <div className="spinner" style={{ width: 13, height: 13, flexShrink: 0, margin: 0 }} />
@@ -272,9 +339,7 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
                     profileKey={candidateRef.profile_key}
                     jobKey={job.key}
                     onGraded={async (result) => {
-                      // Phase 1 done — update score display immediately
                       setLocalScores({ base_score: result.base_score ?? null, ai_adjustment: result.ai_adjustment ?? 0 })
-                      // Phase 2 — synthesize; DocumentsTab awaits this before clearing processing
                       onProcessingChange?.(candidateRef.profile_key, 'Generating synthesis…')
                       setLoadingSynth(true)
                       try {
@@ -306,30 +371,37 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
 }
 
 function PipelineProgress({ stages, currentIdx }) {
+  // Built-in stages for progress line (exclude rejected and potentially too many custom stages)
+  const displayStages = stages.filter(s => s.key !== 'rejected').slice(0, 8)
+  const effectiveIdx = displayStages.findIndex(s => s.key === (stages[currentIdx]?.key))
+
   return (
     <div style={{ display: 'flex', padding: '10px 20px', gap: 0, background: '#fafafa', borderBottom: '1px solid var(--border)' }}>
-      {stages.map((stage, i) => {
-        const done = i <= currentIdx
-        const active = i === currentIdx
+      {displayStages.map((stage, i) => {
+        const isDone = i < effectiveIdx
+        const isActive = i === effectiveIdx
+        const isPastOrActive = i <= effectiveIdx
+        
         return (
-          <div key={stage} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
-            {i < stages.length - 1 && (
+          <div key={stage.key} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+            {i < displayStages.length - 1 && (
               <div style={{
                 position: 'absolute', top: 9, left: '50%', width: '100%',
-                height: 2, background: done ? 'var(--accent)' : 'var(--border)',
+                height: 2, background: isDone ? 'var(--accent)' : 'var(--border)',
                 zIndex: 0,
               }} />
             )}
             <div style={{
               width: 20, height: 20, borderRadius: '50%', zIndex: 1,
-              background: done ? 'var(--accent)' : 'var(--border)',
-              border: active ? '2px solid var(--accent)' : 'none',
+              background: isDone ? 'var(--accent)' : (isActive ? 'linear-gradient(90deg, var(--accent) 50%, var(--border) 50%)' : 'var(--border)'),
+              border: isActive ? '2px solid var(--accent)' : 'none',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxSizing: 'border-box'
             }}>
-              {done && <span style={{ color: '#fff', fontSize: 10 }}>✓</span>}
+              {isDone && <span style={{ color: '#fff', fontSize: 10 }}>✓</span>}
             </div>
-            <div style={{ fontSize: '.65rem', color: done ? 'var(--accent)' : 'var(--text-muted)', marginTop: 4, fontWeight: active ? 600 : 400 }}>
-              {stage}
+            <div style={{ fontSize: '.65rem', color: isPastOrActive ? 'var(--accent)' : 'var(--text-muted)', marginTop: 4, fontWeight: isActive ? 700 : 400, textAlign: 'center' }}>
+              {stage.label}
             </div>
           </div>
         )

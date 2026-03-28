@@ -26,6 +26,18 @@ export default function DashboardPage() {
   const [processingProfiles, setProcessingProfiles] = useState({})
   const [candidateRefreshKey, setCandidateRefreshKey] = useState(0)
 
+  function handleJobStatusChange(jobKey, status) {
+    setJobs((prev) => prev.map((j) => (j.key === jobKey ? { ...j, status } : j)))
+    if (selectedJob?.key === jobKey) {
+      setSelectedJob((prev) => ({ ...prev, status }))
+    }
+  }
+
+  function handleCandidateStageChange(profileKey, stage) {
+    // This will trigger a re-render of JobView if it's open for the same job
+    setCandidateRefreshKey((k) => k + 1)
+  }
+
   function setProcessing(profileKey, status) {
     setProcessingProfiles((prev) =>
       status ? { ...prev, [profileKey]: status } : Object.fromEntries(Object.entries(prev).filter(([k]) => k !== profileKey))
@@ -84,6 +96,7 @@ export default function DashboardPage() {
         selectedProfileKey={selectedCandidate?.profile_key}
         onCandidateRefreshed={(c) => setSelectedCandidate(c)}
         onProcessingChange={setProcessing}
+        onJobStatusChange={handleJobStatusChange}
       />
 
       {selectedCandidate && (
@@ -93,6 +106,7 @@ export default function DashboardPage() {
           onClose={() => setSelectedCandidate(null)}
           onProcessingChange={setProcessing}
           processingStatus={processingProfiles[selectedCandidate.profile_key] || null}
+          onStageChange={handleCandidateStageChange}
         />
       )}
     </div>

@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { getJobCandidates, getCandidate, gradeCandidate, synthesizeCandidate } from '../services/api'
+import { getJobCandidates, getCandidate, gradeCandidate, synthesizeCandidate, updateJobStatus } from '../services/api'
 import UploadResumeModal from './UploadResumeModal'
 import JobInfoModal from './JobInfoModal'
+import StageManager from './StageManager'
 
 function lsKey(jobKey) { return `hrflow_pending_candidates_${jobKey}` }
 function getPendingKeys(jobKey) {
@@ -24,18 +25,7 @@ function scoreBadgeClass(score) {
 
 function formatScore(score) {
   if (score === null || score === undefined) return '—'
-  return `${Math.round((score + (score > 1 ? 0 : 0)) * 100)}%`
-}
-
-function stageColor(stage) {
-  const map = {
-    hired:    '#2bac76',
-    offer:    '#1264a3',
-    interview:'#e8a838',
-    screening:'#9e6cc7',
-    applied:  '#9e9e9e',
-  }
-  return map[(stage || '').toLowerCase()] || '#9e9e9e'
+  return `${Math.round(score * 100)}%`
 }
 
 const s = {
@@ -47,11 +37,19 @@ const s = {
     background: 'var(--bg)',
     overflow: 'hidden',
   },
+  header: {
+    padding: '16px 28px',
+    background: 'var(--surface)',
+    borderBottom: '1px solid var(--border)',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 16,
+  },
   toolbar: {
     display: 'flex',
     alignItems: 'center',
     gap: 14,
-    padding: '18px 28px',
+    padding: '12px 28px',
     background: 'var(--surface)',
     borderBottom: '1px solid var(--border)',
   },
@@ -106,8 +104,8 @@ const s = {
     top: 0,
     background: 'var(--bg)',
   },
-  tr: (hovering) => ({
-    background: hovering ? '#f0f4ff' : 'transparent',
+  tr: (hovering, selected) => ({
+    background: selected ? '#f0f7ff' : (hovering ? '#f8f9fa' : 'transparent'),
     cursor: 'pointer',
     transition: 'background .1s',
   }),
@@ -136,33 +134,25 @@ const s = {
     alignItems: 'center',
     gap: 10,
   },
-  stageDot: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 6,
-    fontSize: '.8125rem',
-    color: 'var(--text-muted)',
-  },
-  stageDotCircle: (color) => ({
-    width: 8,
-    height: 8,
-    borderRadius: '50%',
-    background: color,
-    display: 'inline-block',
-  }),
   empty: {
     textAlign: 'center',
     padding: '60px 20px',
     color: 'var(--text-muted)',
   },
-  gradeAllBtn: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-  },
+  statusBadge: (status) => ({
+    padding: '.55rem 1.1rem',
+    borderRadius: 'var(--radius)',
+    fontSize: '.875rem',
+    fontWeight: 600,
+    textTransform: 'uppercase',
+    letterSpacing: '.03em',
+    background: status === 'open' ? '#e6f4ea' : status === 'on_hold' ? '#fef7e0' : '#fce8e6',
+    color: status === 'open' ? '#1e7e34' : status === 'on_hold' ? '#b05d00' : '#d93025',
+    border: '1px solid ' + (status === 'open' ? '#c3e6cb' : status === 'on_hold' ? '#ffeeba' : '#f5c6cb'),
+  }),
 }
 
-export default function JobView({ job, onSelectCandidate, processingProfiles = {}, refreshKey = 0, selectedProfileKey, onCandidateRefreshed, onProcessingChange }) {
+export default function JobView({ job, onSelectCandidate, processingProfiles = {}, refreshKey = 0, selectedProfileKey, onCandidateRefreshed, onProcessingChange, onJobStatusChange }) {
   const [candidates, setCandidates] = useState([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
@@ -170,8 +160,9 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
   const [stageFilter, setStageFilter] = useState('all')
   const [showUpload, setShowUpload] = useState(false)
   const [showJobInfo, setShowJobInfo] = useState(false)
+  const [showStageManager, setShowStageManager] = useState(false)
+  const [localStatus, setLocalStatus] = useState(job?.status || 'open')
 
-  // Refs so fetchCandidates can read current values without being a dependency
   const selectedProfileKeyRef = useRef(selectedProfileKey)
   const onCandidateRefreshedRef = useRef(onCandidateRefreshed)
   useEffect(() => { selectedProfileKeyRef.current = selectedProfileKey }, [selectedProfileKey])
@@ -181,7 +172,7 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
     if (!job) return
     setLoading(true)
     try {
-      void refreshKey  // dependency — triggers refetch when a grade/synthesis completes
+      void refreshKey
       const data = await getJobCandidates(job.key)
       let list = data.candidates || []
       const fetchedKeys = new Set(list.map((c) => c.profile_key))
@@ -203,7 +194,7 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
                 picture: info.picture || '',
                 score: null,
                 bonus: 0,
-                stage: '',
+                stage: 'applied',
               }]
               stillPending.push(key)
             }
@@ -212,7 +203,6 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
       )
       setPendingKeys(job.key, stillPending)
       setCandidates(list)
-      // Keep selectedCandidate in DashboardPage in sync with freshly fetched scores
       if (selectedProfileKeyRef.current) {
         const updated = list.find((c) => c.profile_key === selectedProfileKeyRef.current)
         if (updated) onCandidateRefreshedRef.current?.(updated)
@@ -226,7 +216,8 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
 
   useEffect(() => {
     fetchCandidates()
-  }, [fetchCandidates])
+    setLocalStatus(job?.status || 'open')
+  }, [fetchCandidates, job?.status])
 
   const allStages = ['all', ...new Set(candidates.map((c) => c.stage).filter(Boolean))]
 
@@ -251,16 +242,32 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
 
   return (
     <div style={s.root}>
-      <div style={s.toolbar}>
+      <div style={s.header}>
         <div style={{ ...s.title, display: 'flex', alignItems: 'center', gap: 10 }}>
           {job.name || job.key}
-          <button 
+          <button
             style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 16, opacity: 0.6, padding: 4 }}
             onClick={() => setShowJobInfo(true)}
             title="View job details"
           >ℹ️</button>
         </div>
+        <div
+          style={s.statusBadge(localStatus)}
+          title={`Job is currently ${localStatus.replace('_', ' ')}`}
+        >
+          {localStatus.replace('_', ' ')}
+        </div>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 10 }}>
+          <button className="btn-secondary" onClick={() => setShowStageManager(true)}>
+            ⚙️ Pipeline
+          </button>
+          <button className="btn-primary" onClick={() => setShowUpload(true)} disabled={loading}>
+            📎 Add candidate
+          </button>
+        </div>
+      </div>
 
+      <div style={s.toolbar}>
         <div style={s.searchWrap}>
           <span style={s.searchIcon}>⌕</span>
           <input
@@ -278,18 +285,18 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
         >
           {allStages.map((st) => (
             <option key={st} value={st}>
-              {st === 'all' ? 'All stages' : st}
+              {st === 'all' ? 'All stages' : st.replace(/_/g, ' ')}
             </option>
           ))}
         </select>
 
-        <button className="btn-primary" onClick={() => setShowUpload(true)} disabled={loading}>
-          📎 Add candidate
-        </button>
+        <div style={{ fontSize: '.8rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+          {filtered.length} candidate{filtered.length !== 1 ? 's' : ''}
+        </div>
       </div>
 
       <div style={s.tableWrap}>
-        {loading ? (
+        {loading && candidates.length === 0 ? (
           <div style={{ padding: 40, textAlign: 'center' }}>
             <div className="spinner" />
           </div>
@@ -315,7 +322,7 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
                 return (
                   <tr
                     key={c.profile_key}
-                    style={s.tr(hovered === c.profile_key)}
+                    style={s.tr(hovered === c.profile_key, selectedProfileKey === c.profile_key)}
                     onClick={() => onSelectCandidate(c)}
                     onMouseEnter={() => setHovered(c.profile_key)}
                     onMouseLeave={() => setHovered(null)}
@@ -329,7 +336,7 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
                             : initials}
                         </div>
                         <div>
-                          <div style={{ fontWeight: 500 }}>{c.first_name} {c.last_name}</div>
+                          <div style={{ fontWeight: 600 }}>{c.first_name} {c.last_name}</div>
                           {processingProfiles[c.profile_key] && (
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '.7rem', color: 'var(--accent)', marginTop: 2 }}>
                               <div className="spinner" style={{ width: 9, height: 9 }} />
@@ -341,9 +348,17 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
                       </div>
                     </td>
                     <td style={s.td}>
-                      <span style={s.stageDot}>
-                        <span style={s.stageDotCircle(stageColor(c.stage))} />
-                        {c.stage || 'Unknown'}
+                      <span style={{ 
+                        fontSize: '.75rem', 
+                        padding: '2px 10px', 
+                        borderRadius: 4, 
+                        background: '#f0f0f0',
+                        textTransform: 'capitalize',
+                        fontWeight: 500
+                      }}>
+                        {c.stage?.startsWith('custom_') 
+                          ? c.stage.slice(7).replace(/_/g, ' ') 
+                          : c.stage?.replace(/_/g, ' ')}
                       </span>
                     </td>
                     <td style={{ ...s.td, textAlign: 'center' }}>
@@ -351,8 +366,14 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
                         {formatScore(total)}
                       </span>
                     </td>
-                    <td style={{ ...s.td, textAlign: 'center', color: 'var(--text-muted)', fontSize: '.8rem' }}>
-                      {c.bonus > 0 ? `+${(c.bonus * 100).toFixed(0)}%` : '—'}
+                    <td style={{ ...s.td, textAlign: 'center' }}>
+                      {c.bonus ? (
+                        <span style={{ color: c.bonus > 0 ? '#1e7e34' : '#d93025', fontWeight: 600, fontSize: '.8rem' }}>
+                          {c.bonus > 0 ? '+' : ''}{Math.round(c.bonus * 100)}%
+                        </span>
+                      ) : (
+                        <span style={{ color: 'var(--text-muted)', fontSize: '.8rem' }}>—</span>
+                      )}
                     </td>
                   </tr>
                 )
@@ -393,6 +414,17 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
         <JobInfoModal
           job={job}
           onClose={() => setShowJobInfo(false)}
+        />
+      )}
+
+      {showStageManager && (
+        <StageManager
+          job={job}
+          onClose={() => setShowStageManager(false)}
+          onStatusChange={(status) => {
+            setLocalStatus(status)
+            onJobStatusChange?.(job.key, status)
+          }}
         />
       )}
     </div>

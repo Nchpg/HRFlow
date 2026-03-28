@@ -25,6 +25,21 @@ class BonusPayload(BaseModel):
     bonus: float
 
 
+class StagePayload(BaseModel):
+    job_key: str
+    stage: str
+
+
+@router.patch("/{profile_key}/stage")
+async def update_candidate_stage(profile_key: str, payload: StagePayload):
+    """Update candidate recruitment stage for a specific job."""
+    try:
+        result = await hrflow.update_candidate_stage(profile_key, payload.job_key, payload.stage)
+        return {"ok": True, "profile_key": profile_key, "job_key": payload.job_key, **result}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
 @router.post("/upload")
 async def upload_resume(file: UploadFile = File(...), job_key: str = Form(None)):
     """Parse a PDF resume, create a candidate profile, and optionally link it to a job."""
