@@ -95,9 +95,13 @@ function DeltaBadge({ delta }) {
   if (delta === undefined || delta === null) return null
   const pct = Math.round(delta * 100)
   const label = pct > 0 ? `+${pct}%` : `${pct}%`
-  const bg = delta > 0 ? 'rgba(43,172,118,.25)' : delta < 0 ? 'rgba(231,76,60,.25)' : 'rgba(255,255,255,.15)'
+  const bg = delta > 0 ? '#2bac76' : delta < 0 ? '#e01e5a' : 'rgba(255,255,255,.25)'
   return (
-    <span style={{ fontSize: '.7rem', fontWeight: 700, padding: '1px 6px', borderRadius: 99, background: bg, color: '#fff', flexShrink: 0 }}>
+    <span style={{
+      fontSize: '.75rem', fontWeight: 700, padding: '2px 8px',
+      borderRadius: 99, background: 'rgba(255,255,255,.18)', color: '#fff', flexShrink: 0,
+      letterSpacing: '.03em', border: `1.5px solid ${bg}`,
+    }}>
       {label}
     </span>
   )
@@ -113,7 +117,8 @@ function DocumentBubble({ doc, onView }) {
           <DeltaBadge delta={doc.delta} />
         </div>
         {doc.delta_rationale && (
-          <div style={{ fontSize: '.72rem', opacity: 0.85, marginBottom: 6, fontStyle: 'italic' }}>
+          <div style={sb.rationale}>
+            <span style={sb.rationaleIcon}>✦</span>
             {doc.delta_rationale}
           </div>
         )}
@@ -158,6 +163,25 @@ const sb = {
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     flex: 1,
+  },
+  rationale: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 5,
+    fontSize: '.75rem',
+    fontStyle: 'italic',
+    background: 'rgba(255,255,255,.15)',
+    borderLeft: '2px solid rgba(255,255,255,.6)',
+    borderRadius: '0 4px 4px 0',
+    padding: '5px 8px',
+    marginBottom: 8,
+    lineHeight: 1.45,
+  },
+  rationaleIcon: {
+    flexShrink: 0,
+    fontSize: '.65rem',
+    marginTop: 1,
+    opacity: 0.8,
   },
   divider: {
     height: 1,

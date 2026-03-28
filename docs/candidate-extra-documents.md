@@ -54,7 +54,6 @@ Extra documents are stored as entries in the profile's `metadatas` array via `PU
 
 ### Constraints
 
-- **Text only** — no binary files. Content is plain text (`.txt` equivalent).
 - **Per-job scoping** — documents for job A are not visible when reviewing job B.
 - **Multiple documents** — multiple documents per (candidate, job) pair are supported.
 - **Size limit** — content truncated at 8 000 characters to stay within HRFlow metadata value limits.
@@ -92,7 +91,7 @@ Implementation: fetch profile via `GET /v1/profile/indexing`, filter `metadatas`
 
 ---
 
-### Upload a new extra document
+### Upload a new text document
 
 ```
 POST /api/candidates/{profile_key}/documents
@@ -120,6 +119,45 @@ Implementation:
 2. Parse existing `metadatas`
 3. Append new entry with `name = extra_doc_{job_key}_{unix_timestamp}` (no `delta` yet)
 4. `PUT /v1/profile/indexing` with updated metadatas
+
+---
+
+### Upload a file (PDF / DOCX / Audio)
+
+```
+POST /api/candidates/{profile_key}/documents/file
+```
+
+**Request body** — `multipart/form-data`:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `job_key` | string | Job the document is scoped to |
+| `file` | binary | The file to process |
+
+**Accepted formats:**
+
+| Extension | Processing |
+|-----------|-----------|
+| `.pdf` | Text extracted via `pypdf` (`PdfReader`) |
+| `.docx` / `.doc` | Text extracted via `python-docx` (paragraphs joined by newline) |
+| `.mp3` / `.m4a` / `.wav` / `.aac` / `.ogg` / `.flac` / `.aiff` | Transcribed via LLM multimodal API (`google/gemini-2.0-flash-001`) |
+| `.txt` and other text | Decoded as UTF-8 |
+
+**Response:**
+```json
+{
+  "ok": true,
+  "id": "extra_doc_abc123_1711634400",
+  "content": "<extracted or transcribed text>"
+}
+```
+
+**Errors:**
+- `400` — unsupported format or no text could be extracted
+- `502` — upstream error (HRFlow, LLM)
+
+The extracted/transcribed text is stored as the document's `content` field. The filename is preserved as-is for display. After this endpoint returns the frontend re-fetches the document list and triggers grading.
 
 ---
 
@@ -223,15 +261,16 @@ When a document is submitted:
 ```
 CandidatePanel
 └── DocumentsTab
-    ├── DocumentBubble[]       (one per document)
-    │   ├── DeltaBadge         (colored +X% / -X% pill)
-    │   ├── delta_rationale    (italic one-liner below filename)
-    │   ├── content preview    (first 2 lines / 120 chars)
+    ├── DocumentBubble[]        (one per document)
+    │   ├── DeltaBadge          (colored +X% / -X% pill)
+    │   ├── delta_rationale     (italic one-liner below filename)
+    │   ├── content preview     (first 2 lines / 120 chars)
     │   └── onClick → TextViewerPanel overlay
     └── DocumentInput
-        ├── FilenameField      (optional)
-        ├── ContentTextarea    (6 rows, Ctrl+Enter to send)
-        └── SendButton
+        ├── FilenameField       (optional, for text entry)
+        ├── ContentTextarea     (6 rows, Ctrl+Enter to send)
+        ├── UploadFileButton    (📎 hidden <input type="file">, triggers handleFileChange)
+        └── SendButton          (text path only)
 ```
 
 ---
@@ -241,9 +280,10 @@ CandidatePanel
 | State | Trigger | Behaviour |
 |-------|---------|-----------|
 | Loading documents | Tab opened | Spinner while fetching, then list renders |
-| Sending document | Send clicked | Button disabled, spinner; on success new bubble appended; auto-grade fires |
-| Send error | API error | Error message below input, input remains editable |
-| Grading | After send | `processingProfiles[profileKey] = 'Grading…'` — spinner on row + panel banner |
+| Sending text document | Send clicked | Button disabled; on success new bubble appended; auto-grade fires |
+| Uploading file | File selected | `"Processing file…"` status shown; after extraction → auto-grade fires |
+| Send/upload error | API error | Error message below input, input remains editable |
+| Grading | After send/upload | `processingProfiles[profileKey] = 'Grading…'` — spinner on candidate row + panel banner |
 | Synthesis | After grade | `processingProfiles[profileKey] = 'Generating synthesis…'` — banner updates |
 | Viewer open | Bubble click | TextViewerPanel renders as overlay |
 | Viewer closed | Close button | TextViewerPanel unmounts |
@@ -252,8 +292,7 @@ CandidatePanel
 
 ## Out of Scope (v1)
 
-- File upload (binary, PDF, DOCX) — text only.
 - Deletion or editing of submitted documents.
 - Notifications to HR when a document is added by another user.
 - Versioning or diff views.
-- Structured data extraction from documents (OCR, parsing).
+- Structured data extraction from documents (OCR, advanced parsing beyond pypdf/python-docx).

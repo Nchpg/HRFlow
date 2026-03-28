@@ -54,6 +54,19 @@ HR can create bespoke stages for specific needs (e.g., "Background Check").
 
 ---
 
+### Real-time Stage Updates
+
+When a stage change is saved from `CandidatePanel`:
+
+1. `PATCH /api/candidates/{profile_key}/stage` persists the new stage in HRFlow.
+2. `onStageChange(profileKey, stage)` is called in `CandidatePanel`.
+3. `DashboardPage` propagates this via `candidateOverride = { profileKey, stage }`.
+4. `JobView` patches its local `candidates` array immediately — the stage badge in the candidate list updates without a full re-fetch.
+
+This optimistic update avoids the HRFlow indexing delay that would otherwise cause stale stage labels to remain visible.
+
+---
+
 ### Visual Progress Stepper (`CandidatePanel`)
 
 Inside the candidate's profile panel, the pipeline is visualized using a horizontal progress bar:

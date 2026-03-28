@@ -163,6 +163,28 @@ Add a new text document to a candidate's profile for a specific job.
 
 ---
 
+### `POST /api/candidates/{profile_key}/documents/file`
+Upload a file (PDF, DOCX, or audio). The backend extracts or transcribes text and stores it as a document.
+
+**Body** — `multipart/form-data`
+- `job_key` (string, required)
+- `file` (binary) — accepted extensions: `.pdf`, `.docx`, `.doc`, `.mp3`, `.m4a`, `.wav`, `.aac`, `.ogg`, `.flac`, `.aiff`, `.txt`
+
+**Processing by type:**
+- **PDF** — text extracted via `pypdf`
+- **DOCX/DOC** — paragraph text extracted via `python-docx`
+- **Audio** — transcribed via `google/gemini-2.0-flash-001` through OpenRouter
+- **TXT / other** — decoded as UTF-8
+
+**Response**
+```json
+{ "ok": true, "id": "extra_doc_abc123_1711634400", "content": "<extracted text>" }
+```
+
+**Errors:** `400` if unsupported format or no text could be extracted; `502` on upstream failure.
+
+---
+
 ## AI — `/api/ai`
 
 ### `POST /api/ai/grade`
