@@ -77,7 +77,7 @@ HR can create **custom stages** to accommodate recruitment workflows that don't 
 
 #### Storage of the custom stage registry
 
-The list of custom stages is **global** (shared across all jobs) and stored as a **HRFlow source tag** on the source, using the key `custom_stages`.
+Custom stages are **scoped to a single job**. Each job stores its own registry as a **HRFlow job tag** using the key `custom_stages`.
 
 **Tag schema:**
 ```json
@@ -87,7 +87,7 @@ The list of custom stages is **global** (shared across all jobs) and stored as a
 }
 ```
 
-> Storing on the source (rather than per-job) ensures custom stages are available consistently across all jobs without duplication.
+> This means a custom stage created for a "Senior Frontend Engineer" job will not appear in the stage selector of any other job. Each job has an independent pipeline configuration.
 
 ---
 
@@ -157,7 +157,7 @@ Job status is stored as a **HRFlow job tag** using the key `job_status`.
 #### Create a custom stage
 
 ```
-POST /api/stages
+POST /api/jobs/{job_key}/stages
 ```
 
 **Body:**
@@ -172,6 +172,7 @@ POST /api/stages
 ```json
 {
   "ok": true,
+  "job_key": "abc123",
   "key": "custom_background_check",
   "label": "Background Check",
   "color": "teal",
@@ -181,23 +182,24 @@ POST /api/stages
 ```
 
 **Behavior:**
-1. Derive `key` from label: lowercase, trim, replace spaces/special chars with `_`, prepend `custom_`. Append `_2`, `_3`… on collision.
-2. Fetch the source's `custom_stages` tag.
+1. Derive `key` from label: lowercase, trim, replace spaces/special chars with `_`, prepend `custom_`. Append `_2`, `_3`… on collision within this job's registry.
+2. Fetch the job's `custom_stages` tag via `GET /v1/job/indexing`.
 3. Append the new stage entry (with `order = last_order + 1`).
-4. Write back via `PUT /v1/profile/indexing` on the source metadata (or equivalent source tag write).
+4. Write back the full job via `PUT /v1/job/indexing`.
 5. Return the created stage.
 
 ---
 
-#### List all stages (built-in + custom)
+#### List all stages for a job (built-in + custom)
 
 ```
-GET /api/stages
+GET /api/jobs/{job_key}/stages
 ```
 
 **Response:**
 ```json
 {
+  "job_key": "abc123",
   "stages": [
     { "key": "applied",    "label": "Applied",           "color": "gray",   "order": 1, "builtin": true },
     { "key": "screening",  "label": "Screening",          "color": "blue",   "order": 2, "builtin": true },
@@ -211,14 +213,14 @@ GET /api/stages
 }
 ```
 
-> The frontend calls this endpoint on load to build the stage selector. Built-in stages are merged with custom stages from the registry, sorted by `order`.
+> The frontend calls this endpoint when a job is selected to build the stage selector for that job. Built-in stages are merged with the job's custom stages from the `custom_stages` job tag, sorted by `order`.
 
 ---
 
 #### Update a custom stage
 
 ```
-PATCH /api/stages/{stage_key}
+PATCH /api/jobs/{job_key}/stages/{stage_key}
 ```
 
 Only allowed for non-built-in stages (`builtin: false`). Attempting to update a built-in stage returns `403`.
@@ -235,6 +237,7 @@ Only allowed for non-built-in stages (`builtin: false`). Attempting to update a 
 ```json
 {
   "ok": true,
+  "job_key": "abc123",
   "key": "custom_background_check",
   "label": "Background & Reference Check",
   "color": "cyan",
@@ -247,14 +250,14 @@ Only allowed for non-built-in stages (`builtin: false`). Attempting to update a 
 #### Delete a custom stage
 
 ```
-DELETE /api/stages/{stage_key}
+DELETE /api/jobs/{job_key}/stages/{stage_key}
 ```
 
 Only allowed for non-built-in stages. Returns `403` for built-in stages.
 
 **Response (success):**
 ```json
-{ "ok": true, "key": "custom_background_check" }
+{ "ok": true, "job_key": "abc123", "key": "custom_background_check" }
 ```
 
 **Response (stage in use — 409 Conflict):**
@@ -267,14 +270,14 @@ Only allowed for non-built-in stages. Returns `403` for built-in stages.
 }
 ```
 
-> The backend must count how many profiles have a `stage_{job_key}` tag whose value contains this stage key before allowing deletion.
+> The backend counts how many profiles linked to this job have a `stage_{job_key}` tag whose stage value matches this key before allowing deletion.
 
 ---
 
 #### Reorder custom stages
 
 ```
-PATCH /api/stages/reorder
+PATCH /api/jobs/{job_key}/stages/reorder
 ```
 
 **Body:**
@@ -284,7 +287,7 @@ PATCH /api/stages/reorder
 }
 ```
 
-Provides the new ordered list of **custom** stage keys only. Built-in stage order is fixed and not affected. The backend recomputes `order` values for all custom stages based on this array, inserting them between the last non-terminal built-in stage (`offer`) and the terminal stages (`hired`, `rejected`).
+Provides the new ordered list of **custom** stage keys for this job only. Built-in stage order is fixed and not affected. The backend recomputes `order` values for all custom stages of this job based on this array, inserting them between the last non-terminal built-in stage (`offer`) and the terminal stages (`hired`, `rejected`).
 
 **Response:**
 ```json
@@ -412,17 +415,17 @@ GET /api/jobs/{job_key}
 
 ## Frontend Integration
 
-### Stage Registry — global state
+### Stage Registry — per-job state
 
-On application load, the frontend calls `GET /api/stages` once and stores the result in a global context (e.g., `StageContext`). This registry is used everywhere stages are rendered or selected — no component fetches stages individually.
+When HR selects a job, the frontend calls `GET /api/jobs/{job_key}/stages` and stores the result in the job's local state. The registry is scoped to the currently open job — it is not shared with other jobs.
 
-When a custom stage is created, edited, deleted, or reordered, the registry in context is updated immediately (optimistic) and re-fetched in the background to stay in sync.
+When a custom stage is created, edited, deleted, or reordered, the registry in local state is updated immediately (optimistic) and re-fetched in the background to stay in sync.
 
 ---
 
-### Custom Stage Manager — Settings panel
+### Custom Stage Manager — per-job settings panel
 
-A dedicated **Stage Manager** UI (accessible from a settings panel or a dedicated "Pipeline" configuration page) allows HR to:
+A dedicated **Stage Manager** UI accessible from the `JobView` (e.g., a "Configure Pipeline" button) allows HR to manage the stages of the currently open job:
 
 - View the full ordered list of built-in and custom stages.
 - **Create** a custom stage by typing a label and picking a color from the palette.
@@ -465,24 +468,24 @@ A **status badge** is displayed next to the job title in both the sidebar job li
 ## Data Flow Summary
 
 ```
-App loads
-  → GET /api/stages
-    → backend merges built-in list with custom_stages source tag
-    → returns full ordered stage list
-  → frontend stores in StageContext (global)
+HR selects a job
+  → GET /api/jobs/{job_key}/stages
+    → backend merges built-in list with custom_stages job tag
+    → returns full ordered stage list for this job
+  → frontend stores in job-local state
 
-HR creates a custom stage in Stage Manager
-  → POST /api/stages  { label, color }
-    → backend derives key, appends to custom_stages source tag
+HR creates a custom stage in Stage Manager (inside JobView)
+  → POST /api/jobs/{job_key}/stages  { label, color }
+    → backend derives key, appends to custom_stages job tag
     → returns new stage object
-  → frontend appends to StageContext immediately
+  → frontend appends to job-local stage list immediately
 
 HR deletes a custom stage
-  → DELETE /api/stages/{stage_key}
-    → backend checks for active candidates (counts profile tags)
+  → DELETE /api/jobs/{job_key}/stages/{stage_key}
+    → backend counts profiles on this job with this stage key
     → if in use: returns 409 with affected_count
-    → if safe: removes from custom_stages source tag
-  → frontend removes from StageContext immediately
+    → if safe: removes from custom_stages job tag
+  → frontend removes from job-local stage list immediately
 
 HR selects a new stage in CandidatePanel
   → PATCH /api/candidates/{profile_key}/stage  { job_key, stage }
@@ -520,13 +523,13 @@ After full implementation, a profile will carry up to three tags per job it is l
 | `synthesis_{job_key}` | `summary`, `strengths`, `weaknesses`, `upskilling`, `verdict` | `POST /api/ai/grade`, `POST /api/ai/synthesize` |
 | `stage_{job_key}` | `stage`, `updated_at` | `PATCH /api/candidates/{profile_key}/stage` |
 
-### Source tag — global custom stage registry
+### Job tag — per-job custom stage registry
 
 | Tag key | Content | Written by |
 |---------|---------|------------|
-| `custom_stages` | JSON array of custom stage objects (`key`, `label`, `color`, `order`, `created_at`) | `POST /api/stages`, `PATCH /api/stages/{key}`, `DELETE /api/stages/{key}`, `PATCH /api/stages/reorder` |
+| `custom_stages` | JSON array of custom stage objects (`key`, `label`, `color`, `order`, `created_at`) | `POST /api/jobs/{job_key}/stages`, `PATCH /api/jobs/{job_key}/stages/{key}`, `DELETE /api/jobs/{job_key}/stages/{key}`, `PATCH /api/jobs/{job_key}/stages/reorder` |
 
-This tag lives on the HRFlow source and is shared across all jobs.
+This tag lives on the HRFlow job object. Each job maintains its own independent registry — creating a custom stage on one job has no effect on other jobs.
 
 ---
 
@@ -538,6 +541,7 @@ This tag lives on the HRFlow source and is shared across all jobs.
 | HRFlow `PUT /v1/job/indexing` is a full replace | Same issue for job tags | Backend fetches full job before writing |
 | HRFlow search index delay | Stage may not reflect immediately in list endpoints if re-fetched too quickly | Same `localStorage` pending pattern already in place for candidates and jobs |
 | No HRFlow tracking update | Cannot use `tracking.stage` for pipeline management | Profile tags used exclusively for stage data |
-| Custom stage key collision | Two labels like "Review" and "review" would produce the same key | Backend checks for key uniqueness before creating; appends `_2`, `_3`… suffix on collision |
-| Deleting a stage with active candidates | Orphaned `stage_{job_key}` tags become invalid | Deletion blocked at API level (409); UI shows affected count; orphaned keys display "Unknown Stage" badge |
-| `custom_stages` source tag is a global single point of write | Concurrent updates from multiple HR users could overwrite each other | Acceptable for current scale; tag is small and write frequency is low. Full locking not required. |
+| Custom stage key collision | Two labels like "Review" and "review" would produce the same key within the same job | Backend checks for key uniqueness within the job's registry before creating; appends `_2`, `_3`… suffix on collision |
+| Deleting a stage with active candidates | Orphaned `stage_{job_key}` tags become invalid for that job | Deletion blocked at API level (409); UI shows affected count; orphaned keys display "Unknown Stage" badge |
+| `custom_stages` job tag is per-job | Stages created on job A are not available on job B — intentional by design | HR must configure the pipeline separately per job |
+| `custom_stages` job tag concurrent write | Two HR users editing the same job's stages simultaneously could overwrite each other | Acceptable for current scale; tag is small and write frequency is low. Full locking not required. |
