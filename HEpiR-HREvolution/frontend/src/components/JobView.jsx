@@ -107,8 +107,8 @@ const s = {
   tr: (hovering, selected, rejected) => ({
     background: selected ? '#f0f7ff' : (hovering ? '#f8f9fa' : 'transparent'),
     cursor: 'pointer',
-    transition: 'background .1s',
-    opacity: rejected ? 0.45 : 1,
+    transition: 'background 200ms var(--ease-out-expo)',
+    ...(rejected && { opacity: 0.45 }),
   }),
   td: {
     padding: '13px 16px',
@@ -393,7 +393,8 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
                 return (
                   <tr
                     key={c.profile_key}
-                    style={s.tr(hovered === c.profile_key, selectedProfileKey === c.profile_key, isRejected)}
+                    className="candidate-row"
+                    style={{ ...s.tr(hovered === c.profile_key, selectedProfileKey === c.profile_key, isRejected), '--row-index': i }}
                     onClick={() => onSelectCandidate(c)}
                     onMouseEnter={() => setHovered(c.profile_key)}
                     onMouseLeave={() => setHovered(null)}
@@ -419,10 +420,10 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
                       </div>
                     </td>
                     <td style={s.td}>
-                      <span style={{ 
-                        fontSize: '.75rem', 
-                        padding: '2px 10px', 
-                        borderRadius: 4, 
+                      <span style={{
+                        fontSize: '.75rem',
+                        padding: '2px 10px',
+                        borderRadius: 4,
                         background: '#f0f0f0',
                         textTransform: 'capitalize',
                         fontWeight: 500

@@ -167,6 +167,14 @@ const s = {
 }
 
 export default function CandidatePanel({ candidateRef, job, onClose, onProcessingChange, processingStatus, onBonusSaved, onStageChange }) {
+  const [closing, setClosing] = useState(false)
+
+  function handleClose() {
+    if (closing) return
+    setClosing(true)
+    setTimeout(onClose, 280)
+  }
+
   const [profile, setProfile] = useState(null)
   const [synthesis, setSynthesis] = useState(null)
   const [activeTab, setActiveTab] = useState('overview')
@@ -179,6 +187,7 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
   const [stages, setStages] = useState([])
   const [currentStage, setCurrentStage] = useState(candidateRef?.stage || 'applied')
   const [stageUpdating, setStageUpdating] = useState(false)
+  const [stageSaved, setStageSaved] = useState(false)
 
   useEffect(() => {
     if (!candidateRef || !job) return
@@ -245,10 +254,13 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
   const handleStageChange = async (newStage) => {
     if (!job || !candidateRef) return
     setStageUpdating(true)
+    setStageSaved(false)
     try {
       await updateCandidateStage(candidateRef.profile_key, job.key, newStage)
       setCurrentStage(newStage)
       onStageChange?.(candidateRef.profile_key, newStage)
+      setStageSaved(true)
+      setTimeout(() => setStageSaved(false), 1400)
     } catch (e) {
       console.error(e)
     } finally {
@@ -282,8 +294,8 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
 
   return (
     <>
-      <div style={s.overlay} onClick={onClose}>
-        <div style={s.drawer} onClick={(e) => e.stopPropagation()}>
+      <div style={s.overlay} className={closing ? 'anim-overlay-exit' : 'anim-overlay'} onClick={handleClose}>
+        <div style={s.drawer} className={closing ? 'anim-drawer-exit' : 'anim-drawer'} onClick={(e) => e.stopPropagation()}>
           {/* Header */}
           <div style={s.header}>
             <div style={s.avatar}>
@@ -302,7 +314,7 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
                 <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: '.7rem', color: 'var(--text-muted)' }}>Stage:</span>
                   <select
-                    style={s.stageSelect}
+                    style={{ ...s.stageSelect, opacity: stageUpdating ? 0.5 : 1, transition: 'opacity 150ms' }}
                     value={currentStage}
                     onChange={(e) => handleStageChange(e.target.value)}
                     disabled={stageUpdating}
@@ -312,14 +324,24 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
                     ))}
                     {currentStageIdx === -1 && <option value={currentStage}>Unknown Stage</option>}
                   </select>
+                  {stageUpdating && (
+                    <div className="spinner" style={{ width: 13, height: 13, margin: 0, flexShrink: 0 }} />
+                  )}
+                  {stageSaved && !stageUpdating && (
+                    <span key={currentStage} className="anim-confirm" style={{ fontSize: '.8rem', color: 'var(--score-high)', fontWeight: 700, flexShrink: 0 }}>✓</span>
+                  )}
                 </div>
               </div>
             </div>
-            <button style={s.closeBtn} onClick={onClose}>✕</button>
+            <button style={s.closeBtn} onClick={handleClose}>✕</button>
           </div>
 
-          {/* Pipeline progress */}
-          <PipelineProgress stages={stages} currentIdx={currentStageIdx} />
+          {/* Pipeline progress — always rendered to reserve space, keyed to candidate */}
+          <PipelineProgress
+            key={candidateRef?.profile_key + '-pipeline'}
+            stages={stages}
+            currentIdx={currentStageIdx}
+          />
 
           {/* Processing status banner */}
           {!loadingProfile && (loadingSynth || processingStatus) && (
@@ -329,10 +351,15 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
             </div>
           )}
 
-          {/* Tabs */}
-          <div style={s.tabs}>
-            {['overview', 'synthesis', 'scoring', 'documents', 'resume', 'ask'].map((tab) => (
-              <div key={tab} style={s.tab(activeTab === tab)} onClick={() => setActiveTab(tab)}>
+          {/* Tabs — keyed to candidateRef so animation replays per profile */}
+          <div key={candidateRef?.profile_key + '-tabs'} style={s.tabs}>
+            {['overview', 'synthesis', 'scoring', 'documents', 'resume', 'ask'].map((tab, i) => (
+              <div
+                key={tab}
+                className="anim-tab"
+                style={{ ...s.tab(activeTab === tab), '--tab-index': i }}
+                onClick={() => setActiveTab(tab)}
+              >
                 {tab.charAt(0).toUpperCase() + tab.slice(1)}
               </div>
             ))}
@@ -342,8 +369,30 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
           <div style={{ ...s.body, overflow: activeTab === 'resume' || activeTab === 'documents' ? 'hidden' : 'auto', padding: activeTab === 'resume' || activeTab === 'documents' ? 0 : '20px' }}>
             {loadingProfile ? (
               <div style={{ padding: 40, textAlign: 'center' }}><div className="spinner" /></div>
+            ) : activeTab === 'documents' ? (
+              <DocumentsTab
+                profileKey={candidateRef.profile_key}
+                jobKey={job.key}
+                onGraded={async (result) => {
+                  setLocalScores({ base_score: result.base_score ?? null, ai_adjustment: result.ai_adjustment ?? 0 })
+                  onProcessingChange?.(candidateRef.profile_key, 'Generating synthesis…')
+                  setLoadingSynth(true)
+                  try {
+                    const synth = await synthesizeCandidate(job.key, candidateRef.profile_key)
+                    if (synth) setSynthesis(synth)
+                  } catch (e) {
+                    console.error('synthesis failed:', e)
+                  } finally {
+                    setLoadingSynth(false)
+                    onProcessingChange?.(candidateRef.profile_key, null)
+                  }
+                }}
+                onProcessingChange={onProcessingChange}
+              />
+            ) : activeTab === 'resume' ? (
+              <ResumeTab profile={profile} />
             ) : (
-              <>
+              <div key={activeTab + candidateRef.profile_key} className="anim-content">
                 {activeTab === 'overview' && (
                   <OverviewTab profile={profile} />
                 )}
@@ -361,34 +410,10 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
                     bonusSaving={bonusSaving}
                   />
                 )}
-                {activeTab === 'documents' && (
-                  <DocumentsTab
-                    profileKey={candidateRef.profile_key}
-                    jobKey={job.key}
-                    onGraded={async (result) => {
-                      setLocalScores({ base_score: result.base_score ?? null, ai_adjustment: result.ai_adjustment ?? 0 })
-                      onProcessingChange?.(candidateRef.profile_key, 'Generating synthesis…')
-                      setLoadingSynth(true)
-                      try {
-                        const synth = await synthesizeCandidate(job.key, candidateRef.profile_key)
-                        if (synth) setSynthesis(synth)
-                      } catch (e) {
-                        console.error('synthesis failed:', e)
-                      } finally {
-                        setLoadingSynth(false)
-                        onProcessingChange?.(candidateRef.profile_key, null)
-                      }
-                    }}
-                    onProcessingChange={onProcessingChange}
-                  />
-                )}
-                {activeTab === 'resume' && (
-                  <ResumeTab profile={profile} />
-                )}
                 {activeTab === 'ask' && (
                   <AskAssistant job={job} candidateRef={candidateRef} inline />
                 )}
-              </>
+              </div>
             )}
           </div>
         </div>
@@ -397,42 +422,136 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
   )
 }
 
+// How many skeleton nodes to show while stages are loading
+const SKELETON_NODES = 6
+
 function PipelineProgress({ stages, currentIdx }) {
-  // Built-in stages for progress line (exclude rejected and potentially too many custom stages)
   const displayStages = stages.filter(s => s.key !== 'rejected').slice(0, 8)
-  const effectiveIdx = displayStages.findIndex(s => s.key === (stages[currentIdx]?.key))
+  const effectiveIdx = displayStages.findIndex(s => s.key === stages[currentIdx]?.key)
+  const isLoading = displayStages.length === 0
+
+  // Track fill fires after nodes have had time to pop in
+  const [trackFill, setTrackFill] = useState(false)
+  useEffect(() => {
+    if (isLoading) return
+    const t = setTimeout(() => setTrackFill(true), 200)
+    return () => clearTimeout(t)
+  }, [isLoading])
+
+  const progressPct = displayStages.length > 1
+    ? (Math.max(0, effectiveIdx) / (displayStages.length - 1)) * 100
+    : 0
 
   return (
-    <div style={{ display: 'flex', padding: '10px 20px', gap: 0, background: '#fafafa', borderBottom: '1px solid var(--border)' }}>
-      {displayStages.map((stage, i) => {
-        const isDone = i < effectiveIdx
-        const isActive = i === effectiveIdx
-        const isPastOrActive = i <= effectiveIdx
-        
-        return (
-          <div key={stage.key} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
-            {i < displayStages.length - 1 && (
-              <div style={{
-                position: 'absolute', top: 9, left: '50%', width: '100%',
-                height: 2, background: isDone ? 'var(--accent)' : 'var(--border)',
-                zIndex: 0,
-              }} />
-            )}
-            <div style={{
-              width: 20, height: 20, borderRadius: '50%', zIndex: 1,
-              background: isDone ? 'var(--accent)' : (isActive ? 'linear-gradient(90deg, var(--accent) 50%, var(--border) 50%)' : 'var(--border)'),
-              border: isActive ? '2px solid var(--accent)' : 'none',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxSizing: 'border-box'
-            }}>
-              {isDone && <span style={{ color: '#fff', fontSize: 10 }}>✓</span>}
-            </div>
-            <div style={{ fontSize: '.65rem', color: isPastOrActive ? 'var(--accent)' : 'var(--text-muted)', marginTop: 4, fontWeight: isActive ? 700 : 400, textAlign: 'center' }}>
-              {stage.label}
-            </div>
-          </div>
-        )
-      })}
+    <div style={{ padding: '16px 24px 14px', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
+      <div style={{ position: 'relative', padding: '0 9px' }}>
+
+        {/* Track background — always visible, gives instant structure */}
+        <div style={{
+          position: 'absolute',
+          top: 9, left: 9, right: 9,
+          height: 2,
+          background: '#e5e7eb',
+          borderRadius: 99,
+          zIndex: 0,
+        }} />
+
+        {/* Track fill — draws after nodes pop in */}
+        {!isLoading && (
+          <div style={{
+            position: 'absolute',
+            top: 9, left: 9,
+            height: 2,
+            background: 'var(--accent)',
+            borderRadius: 99,
+            zIndex: 1,
+            width: trackFill ? `${progressPct}%` : '0%',
+            transition: 'width 700ms var(--ease-out-expo)',
+            maxWidth: 'calc(100% - 18px)',
+          }} />
+        )}
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', position: 'relative', zIndex: 2 }}>
+          {isLoading
+            /* ── Skeleton: gray placeholder circles + label bars ── */
+            ? Array.from({ length: SKELETON_NODES }).map((_, i) => (
+                <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  {/* Circle — same dimensions as real node */}
+                  <div style={{
+                    width: 20, height: 20,
+                    borderRadius: '50%',
+                    background: '#e5e7eb',
+                    border: '2px solid #e5e7eb',
+                    flexShrink: 0,
+                  }} />
+                  {/* Label placeholder — same font metrics as real label so height is identical */}
+                  <div style={{
+                    marginTop: 6,
+                    fontSize: '.6rem',
+                    lineHeight: 1.55,
+                    width: 28,
+                    borderRadius: 4,
+                    background: '#e5e7eb',
+                    overflow: 'hidden',
+                    color: 'transparent',
+                    userSelect: 'none',
+                  }}>&nbsp;</div>
+                </div>
+              ))
+            /* ── Loaded: real nodes animate in with spring stagger ── */
+            : displayStages.map((stage, i) => {
+                const isDone   = i < effectiveIdx
+                const isActive = i === effectiveIdx
+                const isPast   = isDone || isActive
+
+                return (
+                  <div
+                    key={stage.key}
+                    className="pipeline-node"
+                    style={{ '--node-index': i, display: 'flex', flexDirection: 'column', alignItems: 'center' }}
+                  >
+                    <div style={{
+                      width: 20, height: 20,
+                      borderRadius: '50%',
+                      background: isPast ? 'var(--accent)' : '#fff',
+                      border: `2px solid ${isPast ? 'var(--accent)' : '#d1d5db'}`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      flexShrink: 0,
+                      boxShadow: isActive ? '0 0 0 4px rgba(18, 100, 163, 0.15)' : 'none',
+                      transition: 'box-shadow 400ms var(--ease-out-expo)',
+                    }}>
+                      {isDone && (
+                        <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
+                          <path d="M1.5 4.5L3.5 6.5L7.5 2.5" stroke="white" strokeWidth="1.6"
+                            strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                      {isActive && (
+                        <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff' }} />
+                      )}
+                    </div>
+
+                    <div style={{
+                      marginTop: 6,
+                      fontSize: '.6rem',
+                      fontWeight: isActive ? 600 : 400,
+                      color: isPast ? 'var(--accent)' : '#9ca3af',
+                      textAlign: 'center',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      maxWidth: 60,
+                      letterSpacing: isActive ? '.01em' : '0',
+                      transition: 'color 300ms ease',
+                    }}>
+                      {stage.label}
+                    </div>
+                  </div>
+                )
+              })
+          }
+        </div>
+      </div>
     </div>
   )
 }
@@ -444,7 +563,7 @@ function OverviewTab({ profile }) {
 
   return (
     <>
-      <div style={{ marginBottom: 20 }}>
+      <div className="anim-item" style={{ marginBottom: 20, '--item-index': 0 }}>
         <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 8 }}>Skills</div>
         {skills.length === 0 ? (
           <div style={{ color: 'var(--text-muted)', fontSize: '.8rem' }}>No skills found</div>
@@ -463,7 +582,7 @@ function OverviewTab({ profile }) {
         <div style={{ marginBottom: 20 }}>
           <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 8 }}>Experience</div>
           {experiences.map((exp, i) => (
-            <div key={i} style={{ padding: '10px 14px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', marginBottom: 8 }}>
+            <div key={i} className="anim-item" style={{ padding: '10px 14px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', marginBottom: 8, '--item-index': i + 1 }}>
               <div style={{ fontWeight: 600, fontSize: '.875rem' }}>{exp.title}</div>
               <div style={{ fontSize: '.8rem', color: 'var(--text-muted)' }}>{exp.company?.name} {exp.date_start ? `· ${exp.date_start?.slice(0,4)}` : ''}</div>
               {exp.description && <div style={{ fontSize: '.8rem', marginTop: 4, color: 'var(--text)' }}>{exp.description?.slice(0, 200)}{exp.description?.length > 200 ? '…' : ''}</div>}
@@ -476,7 +595,7 @@ function OverviewTab({ profile }) {
         <div>
           <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 8 }}>Education</div>
           {educations.map((edu, i) => (
-            <div key={i} style={{ padding: '10px 14px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', marginBottom: 8 }}>
+            <div key={i} className="anim-item" style={{ padding: '10px 14px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', marginBottom: 8, '--item-index': experiences.length + i + 1 }}>
               <div style={{ fontWeight: 600, fontSize: '.875rem' }}>{edu.title}</div>
               <div style={{ fontSize: '.8rem', color: 'var(--text-muted)' }}>{edu.school?.name} {edu.date_start ? `· ${edu.date_start?.slice(0,4)}` : ''}</div>
             </div>
@@ -497,7 +616,7 @@ function SynthesisTab({ synthesis, loading }) {
   return (
     <>
       {synthesis.summary && (
-        <div style={{ marginBottom: 20 }}>
+        <div className="anim-item" style={{ marginBottom: 20, '--item-index': 0 }}>
           <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 8 }}>Summary</div>
           <div style={{ lineHeight: 1.6, color: 'var(--text)', padding: '12px 14px', background: 'var(--bg)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
             {synthesis.summary}
@@ -505,13 +624,15 @@ function SynthesisTab({ synthesis, loading }) {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 20 }}>
+      <div className="anim-item" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 20, '--item-index': 1 }}>
         <ChipSection title="Strengths" items={synthesis.strengths} color="#d4edda" />
         <ChipSection title="Weaknesses" items={synthesis.weaknesses} color="#f8d7da" />
       </div>
 
       {synthesis.upskilling?.length > 0 && (
-        <ChipSection title="Upskilling recommendations" items={synthesis.upskilling} color="#fff3cd" />
+        <div className="anim-item" style={{ '--item-index': 2 }}>
+          <ChipSection title="Upskilling recommendations" items={synthesis.upskilling} color="#fff3cd" />
+        </div>
       )}
     </>
   )
@@ -555,16 +676,16 @@ function ScoringTab({ hrflowScore, aiAdjustment, bonus, savedBonus, setBonus, on
             { label: 'AI Adjustment', value: fmtAdj(aiAdjustment) },
             { label: 'HR Bonus', value: savedBonus > 0 ? `+${savedBonus}%` : `${savedBonus}%` },
             { label: 'Total', value: fmt(totalScore), highlight: true },
-          ].map((item) => (
-            <div key={item.label} style={{ padding: '14px', background: item.highlight ? '#e8f4fd' : 'var(--bg)', border: `1px solid ${item.highlight ? '#b3d9f5' : 'var(--border)'}`, borderRadius: 'var(--radius-lg)', textAlign: 'center' }}>
-              <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginBottom: 4 }}>{item.label}</div>
+          ].map((item, i) => (
+            <div key={item.label} className="anim-item" style={{ padding: '14px', background: item.highlight ? '#e8f4fd' : 'var(--bg)', border: `1px solid ${item.highlight ? '#b3d9f5' : 'var(--border)'}`, borderRadius: 'var(--radius-lg)', textAlign: 'center', '--item-index': i }}>
+              <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginBottom: 4, letterSpacing: '.04em', textTransform: 'uppercase' }}>{item.label}</div>
               <div style={{ fontSize: '1.25rem', fontWeight: 700, color: item.highlight ? 'var(--accent)' : 'var(--text)' }}>{item.value}</div>
             </div>
           ))}
         </div>
       </div>
 
-      <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px' }}>
+      <div className="anim-item" style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px', '--item-index': 4 }}>
         <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 2 }}>HR Bonus adjustment</div>
           <div style={{ fontSize: '.8rem', color: 'var(--text-muted)' }}>Manually override the candidate score. Value between −100 and +100.</div>

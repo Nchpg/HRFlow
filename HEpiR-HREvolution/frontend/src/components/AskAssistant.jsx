@@ -64,6 +64,14 @@ const s = {
 const CATEGORY_ORDER = ['Technical', 'Behavioral', 'Motivation']
 
 export default function AskAssistant({ job, candidateRef, onClose, inline = false }) {
+  const [closing, setClosing] = useState(false)
+
+  function handleClose() {
+    if (closing) return
+    setClosing(true)
+    setTimeout(onClose, 220)
+  }
+
   const [questions, setQuestions] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -111,7 +119,7 @@ export default function AskAssistant({ job, candidateRef, onClose, inline = fals
             <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 30 }}>No questions generated.</div>
           ) : (
             questions.map((q, i) => (
-              <div key={i} style={{ ...s.question, background: CATEGORY_COLOR[q.category] || '#f5f5f5' }}>
+              <div key={i} className="anim-item" style={{ ...s.question, background: CATEGORY_COLOR[q.category] || '#f5f5f5', '--item-index': i }}>
                 <div style={s.categoryBadge(q.category)}>{q.category}</div>
                 <div>{q.question}</div>
               </div>
@@ -127,12 +135,12 @@ export default function AskAssistant({ job, candidateRef, onClose, inline = fals
   const candidateName = `${candidateRef.first_name} ${candidateRef.last_name}`.trim()
 
   return (
-    <div style={s.overlay} onClick={onClose}>
-      <div style={s.modal} onClick={(e) => e.stopPropagation()}>
+    <div style={s.overlay} className={closing ? 'anim-overlay-exit' : 'anim-overlay'} onClick={handleClose}>
+      <div style={s.modal} className={closing ? 'anim-modal-exit' : 'anim-modal'} onClick={(e) => e.stopPropagation()}>
         <div style={s.header}>
           <span style={{ fontSize: 20 }}>💬</span>
           <div style={s.title}>Interview questions — {candidateName}</div>
-          <button style={s.close} onClick={onClose}>✕</button>
+          <button style={s.close} onClick={handleClose}>✕</button>
         </div>
 
         <div style={s.body}>{questionList}</div>

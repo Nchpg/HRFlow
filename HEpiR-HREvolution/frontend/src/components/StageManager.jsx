@@ -100,6 +100,14 @@ const s = {
 }
 
 export default function StageManager({ job, onClose, onStatusChange }) {
+  const [closing, setClosing] = useState(false)
+
+  function handleClose() {
+    if (closing) return
+    setClosing(true)
+    setTimeout(onClose, 220)
+  }
+
   const [stages, setStages] = useState([])
   const [presets, setPresets] = useState([])
   const [loading, setLoading] = useState(true)
@@ -217,11 +225,11 @@ export default function StageManager({ job, onClose, onStatusChange }) {
   )
 
   return (
-    <div style={s.overlay} onClick={onClose}>
-      <div style={s.modal} onClick={e => e.stopPropagation()}>
+    <div style={s.overlay} className={closing ? 'anim-overlay-exit' : 'anim-overlay'} onClick={handleClose}>
+      <div style={s.modal} className={closing ? 'anim-modal-exit' : 'anim-modal'} onClick={e => e.stopPropagation()}>
         <div style={s.header}>
           <div style={s.title}>Pipeline Settings — {job.name}</div>
-          <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem' }} onClick={onClose}>✕</button>
+          <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem' }} onClick={handleClose}>✕</button>
         </div>
         
         <div style={s.body}>
@@ -345,7 +353,7 @@ export default function StageManager({ job, onClose, onStatusChange }) {
         </div>
 
         <div style={s.footer}>
-          <button className="btn-secondary" onClick={onClose}>Close</button>
+          <button className="btn-secondary" onClick={handleClose}>Close</button>
         </div>
       </div>
     </div>

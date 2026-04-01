@@ -18,9 +18,17 @@ function preview(content) {
 // ---------------------------------------------------------------------------
 
 function TextViewerPanel({ doc, onClose }) {
+  const [closing, setClosing] = useState(false)
+
+  function handleClose() {
+    if (closing) return
+    setClosing(true)
+    setTimeout(onClose, 220)
+  }
+
   return (
-    <div style={sv.overlay} onClick={onClose}>
-      <div style={sv.panel} onClick={(e) => e.stopPropagation()}>
+    <div style={sv.overlay} className={closing ? 'anim-overlay-exit' : 'anim-overlay'} onClick={handleClose}>
+      <div style={sv.panel} className={closing ? 'anim-modal-exit' : 'anim-modal'} onClick={(e) => e.stopPropagation()}>
         <div style={sv.header}>
           <div style={sv.headerLeft}>
             <span style={{ fontSize: '1.1rem' }}>📄</span>
@@ -29,7 +37,7 @@ function TextViewerPanel({ doc, onClose }) {
               <div style={sv.meta}>{doc.uploaded_by}{doc.uploaded_by ? ' · ' : ''}{formatDate(doc.uploaded_at)}</div>
             </div>
           </div>
-          <button style={sv.closeBtn} onClick={onClose}>✕</button>
+          <button style={sv.closeBtn} onClick={handleClose}>✕</button>
         </div>
         <pre style={sv.body}>{doc.content}</pre>
       </div>
@@ -437,7 +445,7 @@ export default function DocumentsTab({ profileKey, jobKey, onGraded, onProcessin
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
-      <div ref={listRef} style={sd.list}>
+      <div ref={listRef} key={profileKey + jobKey} style={sd.list}>
         {loading ? (
           <div style={sd.empty}><div className="spinner" /></div>
         ) : documents.length === 0 ? (
@@ -447,8 +455,14 @@ export default function DocumentsTab({ profileKey, jobKey, onGraded, onProcessin
             <div style={{ fontSize: '.8rem' }}>Send supplementary text to enrich the AI grading.</div>
           </div>
         ) : (
-          documents.map((doc) => (
-            <DocumentBubble key={doc.id} doc={doc} onView={setViewingDoc} />
+          documents.map((doc, i) => (
+            <div
+              key={doc.id}
+              className="anim-item"
+              style={{ '--item-index': Math.min(documents.length - 1 - i, 6) }}
+            >
+              <DocumentBubble doc={doc} onView={setViewingDoc} />
+            </div>
           ))
         )}
       </div>
