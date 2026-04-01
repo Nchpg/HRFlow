@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getCandidate, synthesizeCandidate, getStoredSynthesis, updateBonus, getJobStages, updateCandidateStage } from '../services/api'
+import { getCandidate, synthesizeCandidate, getStoredSynthesis, updateBonus, getJobStages, updateCandidateStage, generateEmail, getExtraDocuments } from '../services/api'
 import AskAssistant from './AskAssistant'
 import DocumentsTab from './DocumentsTab'
 
@@ -166,7 +166,7 @@ const s = {
   },
 }
 
-export default function CandidatePanel({ candidateRef, job, onClose, onProcessingChange, processingStatus, onBonusSaved, onStageChange }) {
+export default function CandidatePanel({ candidateRef, job, onClose, onProcessingChange, onScoreReady, processingStatus, onBonusSaved, onStageChange }) {
   const [closing, setClosing] = useState(false)
 
   function handleClose() {
@@ -188,6 +188,7 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
   const [currentStage, setCurrentStage] = useState(candidateRef?.stage || 'applied')
   const [stageUpdating, setStageUpdating] = useState(false)
   const [stageSaved, setStageSaved] = useState(false)
+  const [docsRefreshKey, setDocsRefreshKey] = useState(0)
 
   useEffect(() => {
     if (!candidateRef || !job) return
@@ -307,9 +308,14 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
               <div style={s.name}>{fullName || candidateRef.profile_key}</div>
               <div style={s.email}>{info.email || candidateRef.email || ''}</div>
               <div style={{ marginTop: 6, display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span className={`score-badge ${scoreBadgeClass(totalScore)}`}>
-                  {totalScore !== null ? `${Math.round(totalScore * 100)}%` : 'Not scored'}
-                </span>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span className={`score-badge ${scoreBadgeClass(totalScore)}`}>
+                    {totalScore !== null ? `${Math.round(totalScore * 100)}%` : 'Not scored'}
+                  </span>
+                  {processingStatus && (
+                    <div className="spinner" style={{ width: 14, height: 14, margin: 0, flexShrink: 0 }} />
+                  )}
+                </div>
 
                 <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: '.7rem', color: 'var(--text-muted)' }}>Stage:</span>
@@ -353,7 +359,7 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
 
           {/* Tabs — keyed to candidateRef so animation replays per profile */}
           <div key={candidateRef?.profile_key + '-tabs'} style={s.tabs}>
-            {['overview', 'synthesis', 'scoring', 'documents', 'resume', 'ask'].map((tab, i) => (
+            {['overview', 'synthesis', 'scoring', 'documents', 'resume', 'email', 'ask'].map((tab, i) => (
               <div
                 key={tab}
                 className="anim-tab"
@@ -366,7 +372,7 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
           </div>
 
           {/* Body */}
-          <div style={{ ...s.body, overflow: activeTab === 'resume' || activeTab === 'documents' ? 'hidden' : 'auto', padding: activeTab === 'resume' || activeTab === 'documents' ? 0 : '20px' }}>
+          <div style={{ ...s.body, overflow: activeTab === 'resume' || activeTab === 'documents' ? 'hidden' : 'auto', padding: activeTab === 'resume' || activeTab === 'documents' ? 0 : '20px', ...(activeTab === 'scoring' ? { display: 'flex', flexDirection: 'column' } : {}) }}>
             {loadingProfile ? (
               <div style={{ padding: 40, textAlign: 'center' }}><div className="spinner" /></div>
             ) : activeTab === 'documents' ? (
@@ -375,6 +381,8 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
                 jobKey={job.key}
                 onGraded={async (result) => {
                   setLocalScores({ base_score: result.base_score ?? null, ai_adjustment: result.ai_adjustment ?? 0 })
+                  onScoreReady?.({ base_score: result.base_score ?? null, ai_adjustment: result.ai_adjustment ?? 0 })
+                  setDocsRefreshKey(k => k + 1)
                   onProcessingChange?.(candidateRef.profile_key, 'Generating synthesis…')
                   setLoadingSynth(true)
                   try {
@@ -391,8 +399,10 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
               />
             ) : activeTab === 'resume' ? (
               <ResumeTab profile={profile} />
+            ) : activeTab === 'email' ? (
+              <EmailTab job={job} candidateRef={candidateRef} />
             ) : (
-              <div key={activeTab + candidateRef.profile_key} className="anim-content">
+              <div key={activeTab + candidateRef.profile_key} className="anim-content" style={activeTab === 'scoring' ? { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 } : undefined}>
                 {activeTab === 'overview' && (
                   <OverviewTab profile={profile} />
                 )}
@@ -408,6 +418,9 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
                     setBonus={setBonus}
                     onSaveBonus={handleBonusSave}
                     bonusSaving={bonusSaving}
+                    profileKey={candidateRef.profile_key}
+                    jobKey={job.key}
+                    refreshKey={docsRefreshKey}
                   />
                 )}
                 {activeTab === 'ask' && (
@@ -654,7 +667,277 @@ function ChipSection({ title, items = [], color }) {
   )
 }
 
-function ScoringTab({ hrflowScore, aiAdjustment, bonus, savedBonus, setBonus, onSaveBonus, bonusSaving }) {
+function formatShortDate(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+}
+
+// ---------------------------------------------------------------------------
+// Score Evolution Graph
+// ---------------------------------------------------------------------------
+
+function ScoreEvolutionGraph({ profileKey, jobKey, baseScore, savedBonus, refreshKey }) {
+  const [docs, setDocs] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [animated, setAnimated] = useState(false)
+
+  useEffect(() => {
+    if (!profileKey || !jobKey) return
+    setLoading(true)
+    setAnimated(false)
+    getExtraDocuments(profileKey, jobKey)
+      .then(data => setDocs(data.documents || []))
+      .catch(() => setDocs([]))
+      .finally(() => setLoading(false))
+  }, [profileKey, jobKey, refreshKey])
+
+  useEffect(() => {
+    if (loading) return
+    const t = setTimeout(() => setAnimated(true), 200)
+    return () => clearTimeout(t)
+  }, [loading])
+
+  // Build chronological score timeline from documents
+  const scoredDocs = [...docs]
+    .filter(d => d.delta !== null && d.delta !== undefined)
+    .sort((a, b) => new Date(a.uploaded_at) - new Date(b.uploaded_at))
+
+  const points = []
+  if (baseScore !== null && baseScore !== undefined) {
+    points.push({
+      score: Math.min(1, Math.max(0, baseScore + savedBonus / 100)),
+      label: 'Base',
+      date: null,
+      delta: null,
+      fullLabel: 'Base score',
+    })
+    let runningAdj = 0
+    for (const doc of scoredDocs) {
+      runningAdj += doc.delta
+      const clampedAdj = Math.min(0.3, Math.max(-0.3, runningAdj))
+      points.push({
+        score: Math.min(1, Math.max(0, baseScore + clampedAdj + savedBonus / 100)),
+        label: (doc.filename || 'Doc').replace(/\.[^.]+$/, '').slice(0, 14),
+        date: doc.uploaded_at,
+        delta: doc.delta,
+        fullLabel: doc.filename,
+      })
+    }
+  }
+
+  // SVG layout constants
+  const H = 300
+  const padL = 50, padR = 50, padT = 40, padB = 40
+  const sidePadding = 60 // Space from the edge of the SVG to the first/last nodes
+  const scrollThreshold = 7
+  const stepW = 120 // Pixels between nodes when scrolling
+
+  // Calculate plot area width
+  const plotW = points.length > scrollThreshold
+    ? (points.length - 1) * stepW
+    : 440 // Fixed width for non-scrolling to keep it centered and tidy
+
+  const W = plotW + padL + padR + (sidePadding * 2)
+  const chartH = H - padT - padB
+
+  // getX calculates the center-aligned X coordinate for each node
+  const getX = (i) => {
+    if (points.length <= 1) return W / 2
+    return padL + sidePadding + i * (plotW / (points.length - 1))
+  }
+  const getY = (score) => padT + chartH * (1 - score)
+
+  const pathD = points.length > 1
+    ? points.map((p, i) => `${i === 0 ? 'M' : 'L'}${getX(i).toFixed(1)},${getY(p.score).toFixed(1)}`).join(' ')
+    : ''
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', padding: '32px 0' }}>
+        <div className="spinner" style={{ width: 24, height: 24, margin: 0 }} />
+      </div>
+    )
+  }
+
+  if (points.length === 0) {
+    return (
+      <div style={{ textAlign: 'center', padding: '32px 0', fontSize: '.875rem', color: 'var(--text-muted)' }}>
+        Grade the candidate to see score evolution.
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>
+      <div style={{
+        flex: 1,
+        overflowX: points.length > scrollThreshold ? 'auto' : 'hidden',
+        overflowY: 'hidden',
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-lg)',
+        background: 'var(--surface)',
+        position: 'relative',
+        display: 'flex',
+        alignItems: 'flex-start' // Align to top to match sticky container
+      }}>
+        {/* Sticky Y-axis labels overlay — height must match SVG exactly */}
+        <div style={{
+          position: 'sticky',
+          left: 0,
+          width: padL,
+          height: H,
+          marginRight: -padL,
+          zIndex: 10,
+          background: 'var(--surface)',
+          borderRight: '1px dashed var(--border)',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          padding: `${padT}px 0 ${padB}px 0`,
+          boxSizing: 'border-box',
+          pointerEvents: 'none',
+          flexShrink: 0
+        }}>
+          {[1, 0.5, 0].map(v => (
+            <div key={v} style={{
+              fontSize: '10px',
+              fontWeight: 700,
+              color: 'var(--text-muted)',
+              textAlign: 'right',
+              paddingRight: 10,
+              fontFamily: 'var(--font-mono)',
+              lineHeight: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-end'
+            }}>
+              {v * 100}%
+            </div>
+          ))}
+        </div>
+
+        {/* Scrollable Graph Area */}
+        <div style={{
+          flex: 1,
+          display: 'flex',
+          justifyContent: points.length > scrollThreshold ? 'flex-start' : 'center',
+          minWidth: 0
+        }}>
+          <svg
+            width={W}
+            height={H}
+            viewBox={`0 0 ${W} ${H}`}
+            style={{
+              display: 'block',
+              overflow: 'visible',
+              flexShrink: 0
+            }}
+            aria-label="Score evolution over time"
+          >
+          {/* Y-axis reference lines at 0 / 50% / 100% across the whole width */}
+          {[0, 0.5, 1].map(v => (
+            <line
+              key={v}
+              x1={0} y1={getY(v).toFixed(1)}
+              x2={W} y2={getY(v).toFixed(1)}
+              stroke="var(--border)" strokeWidth="1"
+              strokeDasharray={v === 0.5 ? '4 3' : undefined}
+            />
+          ))}
+
+          {/* Base Score Anchor Reference Line (Always visible value anchor) */}
+          {points.length > 0 && (
+            <g>
+              <line
+                x1={0} y1={getY(points[0].score).toFixed(1)}
+                x2={W} y2={getY(points[0].score).toFixed(1)}
+                stroke="var(--accent)"
+                strokeWidth="1.5"
+                strokeDasharray="6 4"
+                opacity="0.25"
+              />
+            </g>
+          )}
+
+          {/* Animated connecting path */}
+          {pathD && (
+            <path
+              d={pathD}
+              fill="none"
+              stroke="var(--accent)"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              pathLength="1"
+              strokeDasharray="1"
+              strokeDashoffset={animated ? '0' : '1'}
+              style={{ transition: 'stroke-dashoffset 800ms var(--ease-out-expo)' }}
+            />
+          )}
+
+          {/* Nodes */}
+          {points.map((p, i) => {
+            const cx = getX(i)
+            const cy = getY(p.score)
+            const pct = Math.round(p.score * 100)
+            const isBase = p.delta === null
+            const nodeColor = isBase
+              ? 'var(--accent)'
+              : p.delta > 0 ? 'var(--score-high)' : p.delta < 0 ? 'var(--score-low)' : '#9ca3af'
+            const deltaPct = p.delta !== null ? Math.round(p.delta * 100) : null
+
+            return (
+              <g key={i} className="pipeline-node" style={{ '--node-index': i }}>
+                <title>{isBase ? `Base score: ${pct}%` : `${p.fullLabel} (${formatShortDate(p.date)}): ${pct}% (${deltaPct >= 0 ? '+' : ''}${deltaPct}%)`}</title>
+
+                {/* Score label above node */}
+                <text
+                  x={cx.toFixed(1)} y={(cy - 18).toFixed(1)}
+                  textAnchor="middle" fontSize="11" fontWeight="800"
+                  fill={nodeColor}
+                  fontFamily="var(--font-mono, monospace)"
+                >{pct}%</text>
+
+                {/* Node circle */}
+                <circle
+                  cx={cx.toFixed(1)} cy={cy.toFixed(1)}
+                  r="12"
+                  fill={nodeColor}
+                  stroke="var(--surface)"
+                  strokeWidth="3"
+                  style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))' }}
+                />
+
+                {/* White inner dot */}
+                <circle cx={cx.toFixed(1)} cy={cy.toFixed(1)} r="4" fill="white" />
+
+                {/* Delta badge */}
+                {!isBase && deltaPct !== null && deltaPct !== 0 && (
+                  <g>
+                    <rect
+                      x={(cx - 18).toFixed(1)} y={(cy + 22).toFixed(1)}
+                      width="36" height="14" rx="7"
+                      fill={p.delta > 0 ? '#e6f4ea' : '#fce8e8'}
+                    />
+                    <text
+                      x={cx.toFixed(1)} y={(cy + 32).toFixed(1)}
+                      textAnchor="middle" fontSize="9" fontWeight="700"
+                      fill={p.delta > 0 ? 'var(--score-high)' : 'var(--score-low)'}
+                    >{deltaPct > 0 ? `+${deltaPct}%` : `${deltaPct}%`}</text>
+                  </g>
+                )}
+              </g>
+            )
+          })}
+        </svg>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ScoringTab({ hrflowScore, aiAdjustment, bonus, savedBonus, setBonus, onSaveBonus, bonusSaving, profileKey, jobKey, refreshKey }) {
   const totalScore = hrflowScore !== null && hrflowScore !== undefined
     ? Math.min(1, Math.max(0, hrflowScore + (aiAdjustment || 0) + savedBonus / 100))
     : null
@@ -666,7 +949,7 @@ function ScoringTab({ hrflowScore, aiAdjustment, bonus, savedBonus, setBonus, on
   }
 
   return (
-    <div>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
       <div style={{ marginBottom: 20 }}>
         <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 12 }}>Score breakdown</div>
 
@@ -713,9 +996,21 @@ function ScoringTab({ hrflowScore, aiAdjustment, bonus, savedBonus, setBonus, on
           </button>
         </div>
       </div>
+
+      <div className="anim-item" style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px', marginTop: 16, '--item-index': 5, flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 14, flexShrink: 0 }}>Score evolution</div>
+        <ScoreEvolutionGraph
+          profileKey={profileKey}
+          jobKey={jobKey}
+          baseScore={hrflowScore}
+          savedBonus={savedBonus}
+          refreshKey={refreshKey}
+        />
+      </div>
     </div>
   )
 }
+
 
 function ResumeTab({ profile }) {
   const pdfUrl = profile?.attachments?.[0]?.public_url
@@ -741,5 +1036,122 @@ function ResumeTab({ profile }) {
       }}
       title="Resume PDF"
     />
+  )
+}
+
+function EmailTab({ job, candidateRef }) {
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+  const [emailData, setEmailData] = useState({ subject: '', body: '', to: candidateRef.email || '' })
+  const [guidelines, setGuidelines] = useState('')
+
+  const handleGenerate = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await generateEmail(job.key, candidateRef.profile_key, guidelines)
+      setEmailData({ ...emailData, subject: data.subject, body: data.body })
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleOpenMailClient = () => {
+    if (!emailData.to || !emailData.subject || !emailData.body) return
+    
+    const subject = encodeURIComponent(emailData.subject)
+    const body = encodeURIComponent(emailData.body)
+    
+    // Direct Gmail Compose URL - this is much more reliable for a "popup" feel
+    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${emailData.to}&su=${subject}&body=${body}`
+    
+    // Open in a real small popup window
+    const width = 800
+    const height = 700
+    const left = (window.innerWidth / 2) - (width / 2)
+    const top = (window.innerHeight / 2) - (height / 2)
+    
+    window.open(
+      gmailUrl, 
+      'GmailCompose', 
+      `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes,status=yes`
+    )
+  }
+
+  return (
+    <div className="anim-content">
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 12 }}>Email Candidate</div>
+        
+        <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px', marginBottom: 16 }}>
+          <div style={{ marginBottom: 16, padding: '12px', background: '#f8f9fa', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
+            <div style={{ fontSize: '.75rem', fontWeight: 600, color: 'var(--accent)', marginBottom: 6 }}>Generation Guidelines</div>
+            <textarea
+              value={guidelines}
+              onChange={(e) => setGuidelines(e.target.value)}
+              style={{ width: '100%', minHeight: 60, padding: '8px', border: '1px solid var(--border)', borderRadius: 'var(--radius)', fontSize: '.8rem', background: '#fff', resize: 'vertical' }}
+              placeholder="Ex: 'Interview invitation', 'Polite rejection', 'Technical follow-up'..."
+            />
+          </div>
+
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: '.8rem', color: 'var(--text-muted)', marginBottom: 4 }}>To:</div>
+            <input
+              type="text"
+              value={emailData.to}
+              onChange={(e) => setEmailData({ ...emailData, to: e.target.value })}
+              style={{ width: '100%', padding: '8px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--surface)', fontSize: '.875rem' }}
+              placeholder="candidate@email.com"
+            />
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: '.8rem', color: 'var(--text-muted)', marginBottom: 4 }}>Subject:</div>
+            <input
+              type="text"
+              value={emailData.subject}
+              onChange={(e) => setEmailData({ ...emailData, subject: e.target.value })}
+              style={{ width: '100%', padding: '8px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--surface)', fontSize: '.875rem' }}
+              placeholder="Email subject"
+            />
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: '.8rem', color: 'var(--text-muted)', marginBottom: 4 }}>Message:</div>
+            <textarea
+              value={emailData.body}
+              onChange={(e) => setEmailData({ ...emailData, body: e.target.value })}
+              style={{ width: '100%', minHeight: 200, padding: '12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--surface)', fontSize: '.875rem', lineHeight: 1.5, resize: 'vertical' }}
+              placeholder="Email body content..."
+            />
+          </div>
+
+          <div style={{ display: 'flex', gap: 12 }}>
+            <button 
+              className="btn-secondary" 
+              onClick={handleGenerate} 
+              disabled={loading}
+              style={{ flex: 1 }}
+            >
+              {loading ? <div className="spinner" style={{ width: 14, height: 14, border: '2px solid #666', borderTopColor: 'transparent' }} /> : 'Generate with AI'}
+            </button>
+            <button 
+              className="btn-primary" 
+              onClick={handleOpenMailClient} 
+              disabled={loading || !emailData.subject || !emailData.body || !emailData.to}
+              style={{ flex: 1 }}
+            >
+              Open in Mail Client
+            </button>
+          </div>
+
+          {error && (
+            <div style={{ marginTop: 12, padding: '8px 12px', background: '#ffebee', color: '#c62828', borderRadius: 'var(--radius)', fontSize: '.8rem', textAlign: 'center' }}>
+              {error}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   )
 }

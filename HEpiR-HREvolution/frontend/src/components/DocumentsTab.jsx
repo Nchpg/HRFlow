@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { getExtraDocuments, uploadExtraDocument, uploadExtraDocumentFile, gradeCandidate } from '../services/api'
+import { getExtraDocuments, uploadExtraDocument, uploadExtraDocumentFile, gradeCandidate, transcribeAudio } from '../services/api'
 
 function formatDate(iso) {
   if (!iso) return ''
@@ -122,7 +122,11 @@ function DocumentBubble({ doc, onView }) {
         <div style={sb.topRow}>
           <span style={{ fontSize: '.9rem' }}>📄</span>
           <span style={sb.filename}>{doc.filename}</span>
-          <DeltaBadge delta={doc.delta} />
+          {doc.processing ? (
+            <div className="spinner" style={{ width: 14, height: 14, margin: 0, borderTopColor: '#fff', borderLeftColor: 'rgba(255,255,255,0.3)', borderBottomColor: 'rgba(255,255,255,0.3)', borderRightColor: 'rgba(255,255,255,0.3)' }} />
+          ) : (
+            <DeltaBadge delta={doc.delta} />
+          )}
         </div>
         {doc.delta_rationale && (
           <div style={sb.rationale}>
@@ -224,6 +228,100 @@ const sb = {
 }
 
 // ---------------------------------------------------------------------------
+// Voice recorder
+// ---------------------------------------------------------------------------
+
+function VoiceRecorder({ onTranscribed, disabled }) {
+  const [phase, setPhase] = useState('idle') // idle | recording | transcribing
+  const [seconds, setSeconds] = useState(0)
+  const [error, setError] = useState(null)
+  const mediaRecorderRef = useRef(null)
+  const chunksRef = useRef([])
+  const timerRef = useRef(null)
+
+  useEffect(() => () => clearInterval(timerRef.current), [])
+
+  const startRecording = async () => {
+    setError(null)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mr = new MediaRecorder(stream)
+      chunksRef.current = []
+      mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data) }
+      mr.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop())
+        setPhase('transcribing')
+        const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+        const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+        const filename = `voice_note_${ts}`
+        const file = new File([blob], `${filename}.webm`, { type: 'audio/webm' })
+        try {
+          const result = await transcribeAudio(file)
+          onTranscribed(result.text)
+        } catch (e) {
+          setError('Transcription failed: ' + e.message)
+        } finally {
+          setPhase('idle')
+        }
+      }
+      mr.start()
+      mediaRecorderRef.current = mr
+      setPhase('recording')
+      setSeconds(0)
+      timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000)
+    } catch {
+      setError('Microphone access denied or unavailable.')
+    }
+  }
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && phase === 'recording') {
+      mediaRecorderRef.current.stop()
+      clearInterval(timerRef.current)
+    }
+  }
+
+  const fmt = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      {phase === 'idle' && (
+        <button
+          className="btn-secondary"
+          onClick={startRecording}
+          disabled={disabled}
+          title="Record a voice note — transcription will appear in the text area for editing"
+        >
+          🎙 Record
+        </button>
+      )}
+      {phase === 'recording' && (
+        <>
+          <span style={{ fontSize: '.75rem', color: '#e01e5a', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span className="rec-dot" />
+            {fmt}
+          </span>
+          <button
+            className="btn-secondary"
+            onClick={stopRecording}
+            style={{ borderColor: '#e01e5a', color: '#e01e5a' }}
+          >
+            ⏹ Stop
+          </button>
+        </>
+      )}
+      {phase === 'transcribing' && (
+        <span style={{ fontSize: '.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div className="spinner" style={{ width: 12, height: 12 }} />
+          Transcribing…
+        </span>
+      )}
+      {error && <span style={{ fontSize: '.75rem', color: '#c0392b' }}>{error}</span>}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Document input (composer)
 // ---------------------------------------------------------------------------
 
@@ -233,6 +331,12 @@ function DocumentInput({ onSend, onUploadFile }) {
   const [sending, setSending] = useState(false)
   const [error, setError] = useState(null)
   const fileInputRef = useRef(null)
+  const textareaRef = useRef(null)
+
+  const handleTranscribed = (text) => {
+    setContent((prev) => prev ? prev + '\n' + text : text)
+    setTimeout(() => textareaRef.current?.focus(), 50)
+  }
 
   const handleSend = async () => {
     if (!content.trim() || sending) return
@@ -278,6 +382,7 @@ function DocumentInput({ onSend, onUploadFile }) {
         disabled={sending}
       />
       <textarea
+        ref={textareaRef}
         style={si.textarea}
         placeholder="Type or paste text content… (Ctrl+Enter to send)"
         value={content}
@@ -288,22 +393,23 @@ function DocumentInput({ onSend, onUploadFile }) {
       />
       {error && <div style={si.error}>{error}</div>}
       <div style={si.footer}>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <input
             type="file"
             ref={fileInputRef}
             style={{ display: 'none' }}
             onChange={handleFileChange}
-            accept=".pdf,.docx,.doc,.mp3,.m4a,.wav,.txt"
+            accept=".pdf,.docx,.doc,.mp3,.m4a,.wav,.webm,.txt"
           />
           <button
             className="btn-secondary"
             onClick={() => fileInputRef.current?.click()}
             disabled={sending}
-            title="Upload audio (mp3, m4a), text (pdf, docx, txt)"
+            title="Upload audio (mp3, m4a, wav), text (pdf, docx, txt)"
           >
             📎 {sending ? '...' : 'Upload File'}
           </button>
+          <VoiceRecorder onTranscribed={handleTranscribed} disabled={sending} />
           <span style={si.hint}>Ctrl+Enter to send</span>
         </div>
         <button
@@ -395,23 +501,27 @@ export default function DocumentsTab({ profileKey, jobKey, onGraded, onProcessin
       filename: filename.trim() || 'document',
       content,
       uploaded_at: new Date().toISOString(),
+      uploaded_by: 'You',
       delta: null,
       delta_rationale: null,
+      processing: true,
     }
     setDocuments((prev) => [...prev, optimistic])
     // Auto re-grade then synthesize — onGraded owns the full chain and clears processing
     onProcessingChange?.(profileKey, 'Grading…')
     try {
       const gradeResult = await gradeCandidate(jobKey, profileKey)
+      
+      // Re-fetch immediately after grading to pick up delta / delta_rationale
+      getExtraDocuments(profileKey, jobKey)
+        .then((data) => setDocuments(data.documents || []))
+        .catch(console.error)
+
       await onGraded?.(gradeResult)  // awaited: score update → synthesis → processing cleared
     } catch (e) {
-      console.error('auto-grade failed:', e)
+      console.error('grading failed:', e)
       onProcessingChange?.(profileKey, null)
     }
-    // Re-fetch after grading to pick up delta / delta_rationale
-    getExtraDocuments(profileKey, jobKey)
-      .then((data) => setDocuments(data.documents || []))
-      .catch(console.error)
   }
 
   const handleFileUpload = async (file) => {
@@ -424,18 +534,22 @@ export default function DocumentsTab({ profileKey, jobKey, onGraded, onProcessin
         filename: file.name,
         content: uploaded.content || '',
         uploaded_at: new Date().toISOString(),
+        uploaded_by: 'You',
         delta: null,
         delta_rationale: null,
+        processing: true,
       }
       setDocuments((prev) => [...prev, optimistic])
       
       onProcessingChange?.(profileKey, 'Grading…')
       const result = await gradeCandidate(jobKey, profileKey)
-      await onGraded?.(result)
-      // Re-fetch after grading to pick up delta / delta_rationale
+
+      // Re-fetch immediately after grading to pick up delta / delta_rationale
       getExtraDocuments(profileKey, jobKey)
         .then((data) => setDocuments(data.documents || []))
         .catch(console.error)
+
+      await onGraded?.(result)
     } catch (e) {
       console.error('file upload/processing failed:', e)
       onProcessingChange?.(profileKey, null)
