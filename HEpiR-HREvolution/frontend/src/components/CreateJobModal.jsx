@@ -176,6 +176,14 @@ const s = {
 const EMPTY_FORM = { name: '', summary: '', location: '' }
 
 export default function CreateJobModal({ onClose, onSuccess }) {
+  const [closing, setClosing] = useState(false)
+
+  function handleClose() {
+    if (closing) return
+    setClosing(true)
+    setTimeout(onClose, 220)
+  }
+
   const [form, setForm]     = useState(EMPTY_FORM)
   const [skills, setSkills] = useState([])
   const [newSkill, setNewSkill] = useState({ name: '', level: 'intermediate' })
@@ -232,12 +240,12 @@ export default function CreateJobModal({ onClose, onSuccess }) {
   }
 
   return (
-    <div style={s.overlay} onClick={onClose}>
-      <div style={s.modal} onClick={(e) => e.stopPropagation()}>
+    <div style={s.overlay} className={closing ? 'anim-overlay-exit' : 'anim-overlay'} onClick={handleClose}>
+      <div style={s.modal} className={closing ? 'anim-modal-exit' : 'anim-modal'} onClick={(e) => e.stopPropagation()}>
 
         <div style={s.header}>
           <div style={s.title}>Create a job</div>
-          <button style={s.close} onClick={onClose}>✕</button>
+          <button style={s.close} onClick={handleClose}>✕</button>
         </div>
 
         <form onSubmit={handleSubmit} style={{ display: 'contents' }}>
@@ -312,7 +320,7 @@ export default function CreateJobModal({ onClose, onSuccess }) {
           </div>
 
           <div style={s.footer}>
-            <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
+            <button type="button" className="btn-ghost" onClick={handleClose}>Cancel</button>
             <button type="submit" className="btn-primary"
               disabled={!form.name.trim() || loading || !!result}>
               {loading ? '⏳ Creating…' : 'Create job'}

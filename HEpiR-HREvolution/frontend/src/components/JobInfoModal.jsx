@@ -1,4 +1,4 @@
-import React from 'react'
+import { useState } from 'react'
 
 const LEVEL_COLORS = {
   beginner:     { bg: '#e8f5e9', color: '#2e7d32' },
@@ -55,17 +55,25 @@ function _skill_name(s) {
 }
 
 export default function JobInfoModal({ job, onClose }) {
+  const [closing, setClosing] = useState(false)
+
+  function handleClose() {
+    if (closing) return
+    setClosing(true)
+    setTimeout(onClose, 220)
+  }
+
   if (!job) return null
 
   const skills = job.skills || []
   const location = job.location?.text || job.location || ''
 
   return (
-    <div style={s.overlay} onClick={onClose}>
-      <div style={s.modal} onClick={(e) => e.stopPropagation()}>
+    <div style={s.overlay} className={closing ? 'anim-overlay-exit' : 'anim-overlay'} onClick={handleClose}>
+      <div style={s.modal} className={closing ? 'anim-modal-exit' : 'anim-modal'} onClick={(e) => e.stopPropagation()}>
         <div style={s.header}>
           <div style={s.title}>{job.name || 'Job Details'}</div>
-          <button style={s.close} onClick={onClose}>✕</button>
+          <button style={s.close} onClick={handleClose}>✕</button>
         </div>
 
         <div style={s.body}>

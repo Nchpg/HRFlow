@@ -153,7 +153,7 @@ export default function Sidebar({ jobs, selectedJobKey, onSelectJob, loading, on
     <>
       <aside style={s.sidebar}>
         <div style={s.header}>
-          <div style={s.brand}>HRévolution</div>
+          <div style={s.brand} className="anim-brand">HRévolution</div>
         </div>
 
         <div style={s.search}>
@@ -168,7 +168,7 @@ export default function Sidebar({ jobs, selectedJobKey, onSelectJob, loading, on
 
         {/* Jobs section */}
         <div style={s.sectionRow}>
-          <span style={s.sectionLabel}>Jobs</span>
+          <span style={s.sectionLabel} className="anim-section-label">Jobs</span>
         </div>
 
         <div style={s.list}>

@@ -69,6 +69,14 @@ const s = {
 }
 
 export default function UploadResumeModal({ job, onClose, onSuccess }) {
+  const [closing, setClosing] = useState(false)
+
+  function handleClose() {
+    if (closing) return
+    setClosing(true)
+    setTimeout(onClose, 220)
+  }
+
   const [file, setFile] = useState(null)
   const [dragging, setDragging] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -102,11 +110,11 @@ export default function UploadResumeModal({ job, onClose, onSuccess }) {
   }
 
   return (
-    <div style={s.overlay} onClick={onClose}>
-      <div style={s.modal} onClick={(e) => e.stopPropagation()}>
+    <div style={s.overlay} className={closing ? 'anim-overlay-exit' : 'anim-overlay'} onClick={handleClose}>
+      <div style={s.modal} className={closing ? 'anim-modal-exit' : 'anim-modal'} onClick={(e) => e.stopPropagation()}>
         <div style={s.header}>
           <div style={s.title}>Add candidate via resume</div>
-          <button style={s.close} onClick={onClose}>✕</button>
+          <button style={s.close} onClick={handleClose}>✕</button>
         </div>
 
         <div style={s.body}>
@@ -144,7 +152,7 @@ export default function UploadResumeModal({ job, onClose, onSuccess }) {
         </div>
 
         <div style={s.footer}>
-          <button className="btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn-ghost" onClick={handleClose}>Cancel</button>
           <button
             className="btn-primary"
             onClick={handleUpload}
