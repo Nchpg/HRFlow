@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { getCandidate, synthesizeCandidate, getStoredSynthesis, updateBonus, getJobStages, updateCandidateStage, generateEmail, getExtraDocuments } from '../services/api'
 import AskAssistant from './AskAssistant'
 import DocumentsTab from './DocumentsTab'
@@ -154,15 +154,21 @@ const s = {
     fontSize: '.8rem',
     outline: 'none',
   },
-  stageSelect: {
-    fontSize: '.8rem',
-    padding: '4px 8px',
-    borderRadius: 'var(--radius)',
+  stageArrow: {
+    background: 'transparent',
     border: '1px solid var(--border)',
-    background: 'var(--surface)',
+    borderRadius: 4,
+    width: 22,
+    height: 22,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
     cursor: 'pointer',
-    outline: 'none',
-    maxWidth: 140,
+    fontSize: '1rem',
+    color: 'var(--text)',
+    lineHeight: 1,
+    padding: 0,
+    flexShrink: 0,
   },
 }
 
@@ -188,6 +194,10 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
   const [currentStage, setCurrentStage] = useState(candidateRef?.stage || 'applied')
   const [stageUpdating, setStageUpdating] = useState(false)
   const [stageSaved, setStageSaved] = useState(false)
+  const [stageError, setStageError] = useState(false)
+  const committedStageRef = useRef(candidateRef?.stage || 'applied')
+  const stageDebounceRef = useRef(null)
+  const stageGenRef = useRef(0)
   const [docsRefreshKey, setDocsRefreshKey] = useState(0)
 
   useEffect(() => {
@@ -201,6 +211,9 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
     setBonus(b)
     setSavedBonus(b)
     setCurrentStage(candidateRef.stage || 'applied')
+    committedStageRef.current = candidateRef.stage || 'applied'
+    if (stageDebounceRef.current) clearTimeout(stageDebounceRef.current)
+    stageGenRef.current = 0
 
     getCandidate(candidateRef.profile_key)
       .then(p => {
@@ -252,21 +265,34 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
     }
   }
 
-  const handleStageChange = async (newStage) => {
+  const handleStageChange = (newStage) => {
     if (!job || !candidateRef) return
-    setStageUpdating(true)
+    setCurrentStage(newStage)
     setStageSaved(false)
-    try {
-      await updateCandidateStage(candidateRef.profile_key, job.key, newStage)
-      setCurrentStage(newStage)
-      onStageChange?.(candidateRef.profile_key, newStage)
-      setStageSaved(true)
-      setTimeout(() => setStageSaved(false), 1400)
-    } catch (e) {
-      console.error(e)
-    } finally {
-      setStageUpdating(false)
-    }
+    setStageError(false)
+
+    if (stageDebounceRef.current) clearTimeout(stageDebounceRef.current)
+    const gen = ++stageGenRef.current
+
+    stageDebounceRef.current = setTimeout(async () => {
+      setStageUpdating(true)
+      try {
+        await updateCandidateStage(candidateRef.profile_key, job.key, newStage)
+        if (gen !== stageGenRef.current) return
+        committedStageRef.current = newStage
+        onStageChange?.(candidateRef.profile_key, newStage)
+        setStageSaved(true)
+        setTimeout(() => setStageSaved(false), 1400)
+      } catch (e) {
+        if (gen !== stageGenRef.current) return
+        console.error(e)
+        setCurrentStage(committedStageRef.current)
+        setStageError(true)
+        setTimeout(() => setStageError(false), 2000)
+      } finally {
+        if (gen === stageGenRef.current) setStageUpdating(false)
+      }
+    }, 400)
   }
 
   if (!candidateRef) return null
@@ -292,6 +318,8 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
     : null
 
   const currentStageIdx = stages.findIndex(st => st.key === currentStage)
+  const navStages = stages.filter(st => st.key !== 'rejected')
+  const navIdx = navStages.findIndex(st => st.key === currentStage)
 
   return (
     <>
@@ -317,25 +345,57 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
                   )}
                 </div>
 
-                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: '.7rem', color: 'var(--text-muted)' }}>Stage:</span>
-                  <select
-                    style={{ ...s.stageSelect, opacity: stageUpdating ? 0.5 : 1, transition: 'opacity 150ms' }}
-                    value={currentStage}
-                    onChange={(e) => handleStageChange(e.target.value)}
-                    disabled={stageUpdating}
-                  >
-                    {stages.map(st => (
-                      <option key={st.key} value={st.key}>{st.label}</option>
-                    ))}
-                    {currentStageIdx === -1 && <option value={currentStage}>Unknown Stage</option>}
-                  </select>
-                  {stageUpdating && (
-                    <div className="spinner" style={{ width: 13, height: 13, margin: 0, flexShrink: 0 }} />
-                  )}
-                  {stageSaved && !stageUpdating && (
-                    <span key={currentStage} className="anim-confirm" style={{ fontSize: '.8rem', color: 'var(--score-high)', fontWeight: 700, flexShrink: 0 }}>✓</span>
-                  )}
+                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <button
+                    style={{ ...s.stageArrow, opacity: (navIdx <= 0 || currentStage === 'rejected') ? 0.35 : 1 }}
+                    disabled={navIdx <= 0 || currentStage === 'rejected'}
+                    onClick={() => navIdx > 0 && handleStageChange(navStages[navIdx - 1].key)}
+                  >‹</button>
+                  <span style={{ fontSize: '.8rem', fontWeight: 500, color: currentStage === 'rejected' ? '#ef4444' : 'var(--text)', minWidth: 72, textAlign: 'center' }}>
+                    {navStages[navIdx]?.label || stages[currentStageIdx]?.label || 'Unknown'}
+                  </span>
+                  <button
+                    style={{ ...s.stageArrow, opacity: (navIdx >= navStages.length - 1 || currentStage === 'rejected') ? 0.35 : 1 }}
+                    disabled={navIdx >= navStages.length - 1 || currentStage === 'rejected'}
+                    onClick={() => navIdx < navStages.length - 1 && handleStageChange(navStages[navIdx + 1].key)}
+                  >›</button>
+                  <div style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 2px' }} />
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
+                    <span style={{ fontSize: '.7rem', color: currentStage === 'rejected' ? '#ef4444' : 'var(--text-muted)' }}>Reject</span>
+                    <span
+                      role="switch"
+                      aria-checked={currentStage === 'rejected'}
+                      style={{
+                        position: 'relative',
+                        display: 'inline-block',
+                        width: 28,
+                        height: 16,
+                        borderRadius: 99,
+                        background: currentStage === 'rejected' ? '#ef4444' : '#d1d5db',
+                        transition: 'background 200ms',
+                        cursor: 'pointer',
+                        flexShrink: 0,
+                      }}
+                      onClick={() => handleStageChange(currentStage === 'rejected' ? 'applied' : 'rejected')}
+                    >
+                      <span style={{
+                        position: 'absolute',
+                        top: 2,
+                        left: currentStage === 'rejected' ? 14 : 2,
+                        width: 12,
+                        height: 12,
+                        borderRadius: '50%',
+                        background: '#fff',
+                        transition: 'left 200ms',
+                        boxShadow: '0 1px 2px rgba(0,0,0,.2)',
+                      }} />
+                    </span>
+                  </label>
+                  <div style={{ width: 16, height: 16, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {stageUpdating && <div className="spinner" style={{ width: 13, height: 13, margin: 0 }} />}
+                    {stageSaved && !stageUpdating && <span key={currentStage} className="anim-confirm" style={{ fontSize: '.8rem', color: 'var(--score-high)', fontWeight: 700 }}>✓</span>}
+                    {stageError && !stageUpdating && <span style={{ fontSize: '.8rem', color: '#ef4444', fontWeight: 700 }}>✕</span>}
+                  </div>
                 </div>
               </div>
             </div>
@@ -347,6 +407,7 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
             key={candidateRef?.profile_key + '-pipeline'}
             stages={stages}
             currentIdx={currentStageIdx}
+            onStageChange={handleStageChange}
           />
 
           {/* Processing status banner */}
@@ -438,7 +499,7 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
 // How many skeleton nodes to show while stages are loading
 const SKELETON_NODES = 6
 
-function PipelineProgress({ stages, currentIdx }) {
+function PipelineProgress({ stages, currentIdx, onStageChange }) {
   const displayStages = stages.filter(s => s.key !== 'rejected').slice(0, 8)
   const effectiveIdx = displayStages.findIndex(s => s.key === stages[currentIdx]?.key)
   const isLoading = displayStages.length === 0
@@ -521,7 +582,12 @@ function PipelineProgress({ stages, currentIdx }) {
                   <div
                     key={stage.key}
                     className="pipeline-node"
-                    style={{ '--node-index': i, display: 'flex', flexDirection: 'column', alignItems: 'center' }}
+                    style={{
+                      '--node-index': i,
+                      display: 'flex', flexDirection: 'column', alignItems: 'center',
+                      cursor: isActive ? 'default' : 'pointer',
+                    }}
+                    onClick={() => !isActive && onStageChange(stage.key)}
                   >
                     <div style={{
                       width: 20, height: 20,
