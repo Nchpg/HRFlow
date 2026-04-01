@@ -52,6 +52,17 @@ export async function uploadResume(file, jobKey) {
 export const createJob = (data) => request('POST', '/jobs', data)
 
 // ── AI ────────────────────────────────────────────────────────────────────
+export async function transcribeAudio(file) {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await fetch(`${BASE}/ai/transcribe`, { method: 'POST', body: form })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(err.detail || 'Transcription failed')
+  }
+  return res.json()
+}
+
 export const gradeCandidate = (jobKey, profileKey) =>
   request('POST', '/ai/grade', { job_key: jobKey, profile_key: profileKey })
 export const getStoredSynthesis = (jobKey, profileKey) =>

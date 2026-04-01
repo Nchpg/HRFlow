@@ -201,7 +201,7 @@ async def add_document_file(
             # Need to install python-docx
             doc = DocxDocument(io.BytesIO(content))
             extracted_text = "\n".join([p.text for p in doc.paragraphs])
-        elif ext in ["mp3", "m4a", "wav", "aac", "ogg", "flac", "aiff"]:
+        elif ext in ["mp3", "m4a", "wav", "aac", "ogg", "flac", "aiff", "webm"]:
             extracted_text = await llm.transcribe_audio(content, filename)
         else:
             # Fallback for plain text files

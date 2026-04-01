@@ -39,7 +39,7 @@ async def transcribe_audio(audio_bytes: bytes, filename: str) -> str:
     
     # Extract format from filename (default to mp3 if not found)
     fmt = filename.split(".")[-1].lower()
-    if fmt not in ["mp3", "m4a", "wav", "aac", "ogg", "flac", "aiff"]:
+    if fmt not in ["mp3", "m4a", "wav", "aac", "ogg", "flac", "aiff", "webm"]:
         fmt = "mp3"
 
     # Use a multimodal model for audio transcription.
