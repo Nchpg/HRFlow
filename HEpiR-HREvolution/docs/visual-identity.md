@@ -1,6 +1,5 @@
 # HRévolution — Visual Identity
 
-> Adapted from the halfof8.com design philosophy for an HR recruitment tool.
 > Motion is the primary identity carrier. The UI disappears so candidate data speaks.
 
 ---
