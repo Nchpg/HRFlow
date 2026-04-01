@@ -373,3 +373,16 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .anim-overlay-exit {
   animation: overlayFadeOut 0.25s var(--ease-in-expo) forwards;
 }
+
+/* ── Voice recorder ─────────────────────────────────────────────────── */
+@keyframes recPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.35; transform: scale(0.75); }
+}
+.rec-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #e01e5a;
+  display: inline-block;
+  animation: recPulse 1.1s ease-in-out infinite;
+}

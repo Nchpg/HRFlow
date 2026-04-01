@@ -1,7 +1,7 @@
 """AI router — grading, synthesis, and interview question generation."""
 
 import json
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from services import hrflow, llm
 
@@ -21,6 +21,17 @@ class SynthesizeRequest(BaseModel):
 class AskRequest(BaseModel):
     job_key: str
     profile_key: str
+
+
+@router.post("/transcribe")
+async def transcribe_audio(file: UploadFile = File(...)):
+    """Transcribe an audio file and return the text without saving anything."""
+    try:
+        content = await file.read()
+        text = await llm.transcribe_audio(content, file.filename)
+        return {"text": text}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
 
 
 @router.post("/grade")
