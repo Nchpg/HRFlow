@@ -9,7 +9,7 @@
 Slack-dark sidebar paired with a clean light content canvas. The motion system is what makes the product feel alive — every entrance is deliberate and felt, never jarring.
 
 - **Data-first**: Every element either carries meaning or is removed. The interface exists to surface candidates, not to impress.
-- **Motion with purpose**: All animations serve orientation or feedback. Entrances use fade+translate — the halfof8 signature. Exits are fast and accelerating (ease-in-expo).
+- **Motion with purpose**: All animations serve orientation or feedback. Entrances use fade+translate. Exits are fast and accelerating (ease-in-expo).
 - **Semantic color only**: Color appears exclusively to encode status (score quality, verdict, stage). No decorative hues.
 - **Consistent typography**: Scores and percentages use the monospace stack. All other UI — including score labels and section headers — uses the sans-serif stack.
 
@@ -140,7 +140,7 @@ Motion is a first-class identity signal, not polish. Every element that enters t
 ### Entrance Keyframes
 
 ```css
-/* Brand / hero — blur lifts as element fades up. Signature halfof8 entrance. */
+/* Brand / hero — blur lifts as element fades up. */
 @keyframes blurReveal {
   from { opacity: 0; filter: blur(8px); transform: translateY(8px); }
   to   { opacity: 1; filter: blur(0);   transform: translateY(0);   }
@@ -313,7 +313,7 @@ Tab containers and the pipeline are keyed to `profileKey` so React unmounts and 
 
 ## HR-Specific Adaptations
 
-| halfof8 principle                  | HR adaptation                                                   |
+|         principle                  | HR adaptation                                                   |
 |------------------------------------|-----------------------------------------------------------------|
 | Content-first, UI disappears       | Candidate data (scores, names, stages) is the content           |
 | Motion as identity                 | Every panel entrance is animated; exits accelerate away         |
