@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { getJobCandidates, getCandidate, gradeCandidate, synthesizeCandidate, updateJobStatus, getJobStages } from '../services/api'
+import { storage } from '../services/storage'
 import UploadResumeModal from './UploadResumeModal'
 import JobInfoModal from './JobInfoModal'
 import StageManager from './StageManager'
@@ -176,7 +177,11 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
   const fetchCandidates = useCallback(async () => {
     if (!job) return
     const fetchedForKey = job.key  // capture at call time
-    setLoading(true)
+    
+    // Only show full spinner if we have NO candidates in state
+    const hadData = candidates.length > 0
+    if (!hadData) setLoading(true)
+
     try {
       void refreshKey
       const data = await getJobCandidates(job.key)
@@ -224,7 +229,10 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
       // Discard results if the user has already switched to a different job
       if (currentJobKeyRef.current !== fetchedForKey) return
       setPendingKeys(job.key, stillPending)
+      
       setCandidates(list)
+      storage.set(`candidates_${job.key}`, list)
+
       if (selectedProfileKeyRef.current) {
         const updated = list.find((c) => c.profile_key === selectedProfileKeyRef.current)
         if (updated) onCandidateRefreshedRef.current?.(updated)
@@ -237,10 +245,23 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
   }, [job, refreshKey])
 
   useEffect(() => {
-    setCandidates([]) // Clear previous candidates immediately when job changes
+    if (job?.key) {
+      const cached = storage.get(`candidates_${job.key}`)
+      if (cached) {
+        setCandidates(cached)
+      } else {
+        setCandidates([])
+      }
+    } else {
+      setCandidates([])
+    }
     fetchCandidates()
     setLocalStatus(job?.status || 'open')
-  }, [fetchCandidates, job?.key, job?.status])
+  }, [job?.key, job?.status])
+
+  useEffect(() => {
+    if (refreshKey > 0) fetchCandidates()
+  }, [refreshKey, fetchCandidates])
 
   useEffect(() => {
     if (!candidateOverride) return
@@ -249,6 +270,11 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
       const patch = {}
       if (candidateOverride.bonus !== undefined) patch.bonus = candidateOverride.bonus
       if (candidateOverride.stage !== undefined) patch.stage = candidateOverride.stage
+      if (candidateOverride.base_score !== undefined) {
+        patch.base_score = candidateOverride.base_score
+        patch.ai_adjustment = candidateOverride.ai_adjustment ?? 0
+        patch.score = candidateOverride.base_score + (candidateOverride.ai_adjustment ?? 0)
+      }
       return { ...c, ...patch }
     }))
   }, [candidateOverride])

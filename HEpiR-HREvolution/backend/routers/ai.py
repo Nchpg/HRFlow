@@ -44,7 +44,7 @@ async def grade_candidate(req: GradeRequest):
     """
     try:
         job = await hrflow.get_job(req.job_key)
-        profile = await hrflow.get_profile(req.profile_key)
+        profile = await hrflow.get_profile(req.profile_key, use_cache=False)
 
         existing_tag = hrflow.extract_tag(profile, f"job_data_{req.job_key}")
         existing = json.loads(existing_tag) if existing_tag else {}
@@ -93,6 +93,7 @@ async def grade_candidate(req: GradeRequest):
             "ai_adjustment": ai_adjustment,
             "bonus": existing.get("bonus", 0.0),
         }))
+        hrflow._invalidate_job_candidates(req.job_key)
 
         return {
             "base_score": base_score,

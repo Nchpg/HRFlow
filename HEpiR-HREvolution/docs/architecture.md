@@ -9,11 +9,21 @@ Browser (React/Vite)
       |
       | HTTP /api/*
       v
-FastAPI Backend (Python)
+FastAPI Backend (Python) [In-Memory Cache Layer]
       |
       |—— HRFlow REST API  (jobs, profiles, trackings, scoring, upskilling)
       |—— OpenRouter LLM   (grading, synthesis, interview questions)
 ```
+
+## Performance Optimization Layer
+
+The system uses a sophisticated caching strategy to overcome the inherent latency of external API calls:
+
+- **Bulk Initialization (`/jobs/init`):** On application start, the backend fetches all jobs, then all trackings per-job (HRFlow requires a `job_key` on the trackings endpoint), and the last 100 profiles in parallel. This pre-populates `_CACHE` with `job_candidates_{job_key}` entries, solving the N+1 query problem.
+- **Backend Cache (no TTL):** An in-memory dictionary `_CACHE` in `hrflow.py` stores candidate lists per job. Only `job_candidates_{job_key}` is cached. Entries are evicted surgically: grading and stage changes call `_invalidate_job_candidates(job_key)` to clear only the affected job.
+- **Optimistic Score Updates:** After grading, the score pill in the candidate list updates immediately via a `candidateOverride` state in `JobView` — no re-fetch required. A background re-fetch confirms the persisted value after synthesis completes.
+- **Frontend Cache (30s TTL):** A request-interceptor in `api.js` caches `GET` requests. Any `POST`/`PATCH`/`DELETE` clears the cache.
+- **Persistent SWR (Stale-While-Revalidate):** The UI uses `localStorage` (managed via `storage.js`) to display the last-known-good state immediately on load, while fresh data is fetched in the background.
 
 ## Tech Stack
 
@@ -58,7 +68,8 @@ HRFlow/
         ├── main.jsx
         ← App.jsx
         ├── services/
-        │   └── api.js        ← all fetch helpers
+        │   ├── api.js        ← all fetch helpers + in-memory cache
+        │   └── storage.js    ← localStorage wrapper for SWR persistence
         ├── pages/
         │   └── DashboardPage.jsx
         └── components/

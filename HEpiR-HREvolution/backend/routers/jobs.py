@@ -55,6 +55,81 @@ async def create_job(payload: JobCreatePayload):
         raise HTTPException(status_code=502, detail=str(e))
 
 
+@router.get("/init")
+async def get_init_data():
+    """Bulk initialization: returns jobs, trackings, and profiles with tags."""
+    try:
+        import asyncio
+        # Parallel fetch for everything
+        jobs_task = hrflow.list_jobs(use_cache=False)
+        trackings_task = hrflow.list_all_trackings()
+        profiles_task = hrflow.list_all_profiles(limit=100) # Get last 100 profiles with tags
+        
+        jobs, trackings, profiles = await asyncio.gather(jobs_task, trackings_task, profiles_task)
+        
+        # Populate candidate list cache in background
+        # We can reconstruct what get_job_candidates would return
+        profiles_map = {p["key"]: p for p in profiles if p.get("key")}
+        candidates_by_job = {}
+        for t in trackings:
+            jk = t.get("job_key") or t.get("job", {}).get("key")
+            pk = t.get("profile_key") or t.get("profile", {}).get("key")
+            if not jk or not pk: continue
+            
+            if jk not in candidates_by_job: candidates_by_job[jk] = []
+            
+            p = profiles_map.get(pk)
+            info = p.get("info", {}) if p else t.get("profile", {}).get("info", {})
+            
+            base_score = None
+            ai_adjustment = 0.0
+            bonus = 0.0
+            stage = t.get("stage") or "applied"
+            
+            if p:
+                score_tag = hrflow.extract_tag(p, f"job_data_{jk}")
+                if score_tag:
+                    try:
+                        tag_data = json.loads(score_tag)
+                        base_score = tag_data.get("base_score")
+                        ai_adjustment = tag_data.get("ai_adjustment", 0.0)
+                        bonus = tag_data.get("bonus", 0.0)
+                    except: pass
+                stage_tag = hrflow.extract_tag(p, f"stage_{jk}")
+                if stage_tag:
+                    try: stage = json.loads(stage_tag).get("stage", stage)
+                    except: pass
+            
+            score = (base_score + ai_adjustment) if base_score is not None else None
+            candidates_by_job[jk].append({
+                "profile_key": pk,
+                "first_name": info.get("first_name", ""),
+                "last_name": info.get("last_name", ""),
+                "email": info.get("email", ""),
+                "picture": info.get("picture", ""),
+                "base_score": base_score,
+                "ai_adjustment": ai_adjustment,
+                "score": score,
+                "bonus": bonus,
+                "stage": stage,
+                "tracking_key": t.get("key", ""),
+            })
+
+        for jk, cands in candidates_by_job.items():
+            cands.sort(key=lambda c: (c["score"] is not None, c["score"] or 0), reverse=True)
+            hrflow._set_cached(f"job_candidates_{jk}", cands)
+
+        return {
+            "jobs": jobs,
+            "trackings": trackings,
+            "profiles": profiles
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=502, detail=str(e))
+
+
 @router.get("/debug-raw")
 async def debug_raw_jobs():
     """Return the raw HRFlow response for debugging."""
@@ -253,6 +328,11 @@ async def get_job_candidates(job_key: str):
     Return the ranked list of candidates for a job.
     Scores and stages are read from profile tags.
     """
+    cache_key = f"job_candidates_{job_key}"
+    cached = hrflow._get_cached(cache_key)
+    if cached:
+        return {"candidates": cached}
+
     try:
         trackings = await hrflow.list_trackings(job_key)
     except Exception as e:
@@ -277,17 +357,21 @@ async def get_job_candidates(job_key: str):
             # Extract score data
             score_tag = hrflow.extract_tag(profile, f"job_data_{job_key}")
             if score_tag:
-                tag_data = json.loads(score_tag)
-                base_score = tag_data.get("base_score")
-                ai_adjustment = tag_data.get("ai_adjustment", 0.0)
-                bonus = tag_data.get("bonus", 0.0)
+                try:
+                    tag_data = json.loads(score_tag)
+                    base_score = tag_data.get("base_score")
+                    ai_adjustment = tag_data.get("ai_adjustment", 0.0)
+                    bonus = tag_data.get("bonus", 0.0)
+                except: pass
             
             # Extract stage data
             stage_tag = hrflow.extract_tag(profile, f"stage_{job_key}")
             if stage_tag:
-                s_data = json.loads(stage_tag)
-                stage = s_data.get("stage", "applied")
-                stage_updated_at = s_data.get("updated_at")
+                try:
+                    s_data = json.loads(stage_tag)
+                    stage = s_data.get("stage", "applied")
+                    stage_updated_at = s_data.get("updated_at")
+                except: pass
             else:
                 # Fallback to tracking stage
                 stage = tracking.get("stage") or "applied"
@@ -317,4 +401,5 @@ async def get_job_candidates(job_key: str):
 
     # Sort: scored candidates first (desc), unscored last
     candidates.sort(key=lambda c: (c["score"] is not None, c["score"] or 0), reverse=True)
+    hrflow._set_cached(cache_key, candidates)
     return {"candidates": candidates}

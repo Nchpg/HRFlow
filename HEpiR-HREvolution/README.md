@@ -15,6 +15,14 @@ Key capabilities:
 - **HR bonus** — manual score adjustment (±) on top of the AI score
 - **Job management** — create jobs, set operational status (Open / On Hold / Closed), manage custom pipeline stages
 
+## Performance & Optimization
+
+HEpiR is built for speed and a "zero-latency" feel, even when dealing with large candidate pools:
+- **Dual-Layer Caching** — In-memory caching on both the Frontend (30s TTL) and Backend (60s TTL) to eliminate redundant API calls.
+- **Bulk Initialization** — A single `/init` endpoint fetches all jobs, trackings, and profiles in parallel at app start, pre-populating the caches.
+- **Stale-While-Revalidate (SWR)** — Persistent `localStorage` caching allows the UI to render instantly with old data while fresh data is fetched in the background.
+- **Smart Invalidation** — Mutation operations (status changes, stage updates) intelligently clear related cache entries to maintain data integrity.
+
 ## HrFlow.ai APIs used
 
 | Endpoint | Usage |

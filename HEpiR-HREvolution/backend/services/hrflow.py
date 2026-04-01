@@ -8,6 +8,21 @@ logger = logging.getLogger(__name__)
 
 BASE_URL = "https://api.hrflow.ai/v1"
 
+_CACHE: dict = {}
+
+
+def _get_cached(key: str):
+    return _CACHE.get(key)
+
+
+def _set_cached(key: str, value) -> None:
+    _CACHE[key] = value
+
+
+def _invalidate_job_candidates(job_key: str) -> None:
+    """Evict the candidate list cache for a specific job."""
+    _CACHE.pop(f"job_candidates_{job_key}", None)
+
 
 def _headers() -> dict:
     return {
@@ -20,7 +35,7 @@ def _headers() -> dict:
 # Jobs
 # ---------------------------------------------------------------------------
 
-async def list_jobs(limit: int = 30, page: int = 1) -> list[dict]:
+async def list_jobs(limit: int = 30, page: int = 1, use_cache: bool = True) -> list[dict]:
     """Return jobs from the configured board using the searching endpoint."""
     async with httpx.AsyncClient() as client:
         r = await client.get(
@@ -108,7 +123,7 @@ async def patch_job_tags(job_key: str, tags: list[dict]) -> dict:
 # Profiles
 # ---------------------------------------------------------------------------
 
-async def get_profile(profile_key: str) -> dict:
+async def get_profile(profile_key: str, use_cache: bool = True) -> dict:
     """Return a candidate profile by key."""
     async with httpx.AsyncClient() as client:
         r = await client.get(
@@ -142,7 +157,8 @@ async def patch_profile_tags(profile_key: str, tags: list[dict]) -> dict:
             timeout=15,
         )
         r.raise_for_status()
-        return r.json().get("data", {})
+        res = r.json().get("data", {})
+        return res
 
 
 # ---------------------------------------------------------------------------
@@ -191,6 +207,40 @@ async def get_tracking(job_key: str, profile_key: str) -> dict | None:
         if p_key == profile_key:
             return t
     return None
+
+
+async def list_all_trackings() -> list[dict]:
+    """Return all trackings across all jobs in the configured board."""
+    import asyncio
+    jobs = await list_jobs()
+    job_keys = [j["key"] for j in jobs if j.get("key")]
+    results = await asyncio.gather(*[list_trackings(jk) for jk in job_keys], return_exceptions=True)
+    all_trackings = []
+    for r in results:
+        if isinstance(r, list):
+            all_trackings.extend(r)
+    return all_trackings
+
+
+async def list_all_profiles(limit: int = 100) -> list[dict]:
+    """Return profiles from the configured source."""
+    async with httpx.AsyncClient() as client:
+        r = await client.get(
+            f"{BASE_URL}/profiles/searching",
+            headers=_headers(),
+            params={
+                "source_keys": f'["{settings.hrflow_source_key}"]',
+                "query": "",
+                "limit": limit,
+                "page": 1,
+            },
+            timeout=20,
+        )
+        if not r.is_success:
+            print(f"list_all_profiles → {r.status_code}: {r.text}", flush=True)
+            return []
+        data = r.json()
+        return (data.get("data") or {}).get("profiles", [])
 
 
 # ---------------------------------------------------------------------------
@@ -337,7 +387,8 @@ async def patch_profile_metadatas(profile_key: str, metadatas: list[dict]) -> di
             timeout=15,
         )
         r.raise_for_status()
-        return r.json().get("data", {})
+        res = r.json().get("data", {})
+        return res
 
 
 def get_extra_documents(profile: dict, job_key: str) -> list[dict]:
@@ -489,4 +540,5 @@ async def update_candidate_stage(profile_key: str, job_key: str, stage: str) -> 
         "value": json.dumps({"job_key": job_key, "stage": stage, "updated_at": updated_at})
     }
     await patch_profile_tags(profile_key, existing_tags + [new_tag])
+    _invalidate_job_candidates(job_key)
     return {"stage": stage, "updated_at": updated_at}

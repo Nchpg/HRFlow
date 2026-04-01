@@ -1,21 +1,49 @@
 const BASE = '/api'
 
+const cache = new Map()
+const CACHE_TTL = 30000 // 30 seconds
+
+export function clearCache() {
+  cache.clear()
+}
+
 async function request(method, path, body) {
+  const cacheKey = `${method}:${path}:${body ? JSON.stringify(body) : ''}`
+  
+  if (method === 'GET' && cache.has(cacheKey)) {
+    const { data, timestamp } = cache.get(cacheKey)
+    if (Date.now() - timestamp < CACHE_TTL) {
+      return data
+    }
+  }
+
   const opts = {
     method,
     headers: { 'Content-Type': 'application/json' },
   }
   if (body !== undefined) opts.body = JSON.stringify(body)
+  
   const res = await fetch(`${BASE}${path}`, opts)
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
     throw new Error(err.detail || 'Request failed')
   }
-  return res.json()
+  
+  const data = await res.json()
+  
+  if (method === 'GET') {
+    cache.set(cacheKey, { data, timestamp: Date.now() })
+  } else {
+    // Mutation: clear cache to be safe, or we could be more granular
+    cache.clear()
+  }
+  
+  return data
 }
 
 // ── Jobs ──────────────────────────────────────────────────────────────────
 export const getJobs = () => request('GET', '/jobs')
+export const getInitData = () => request('GET', '/jobs/init')
 export const getJob = (jobKey) => request('GET', `/jobs/${jobKey}`)
 export const getJobCandidates = (jobKey) => request('GET', `/jobs/${jobKey}/candidates`)
 export const updateJobStatus = (jobKey, status) => request('PATCH', `/jobs/${jobKey}/status`, { status })
@@ -46,6 +74,7 @@ export async function uploadResume(file, jobKey) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
     throw new Error(err.detail || 'Upload failed')
   }
+  cache.clear()
   return res.json()
 }
 
@@ -95,5 +124,6 @@ export async function uploadExtraDocumentFile(profileKey, jobKey, file) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
     throw new Error(err.detail || 'Upload failed')
   }
+  cache.clear()
   return res.json()
 }

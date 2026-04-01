@@ -122,7 +122,11 @@ function DocumentBubble({ doc, onView }) {
         <div style={sb.topRow}>
           <span style={{ fontSize: '.9rem' }}>📄</span>
           <span style={sb.filename}>{doc.filename}</span>
-          <DeltaBadge delta={doc.delta} />
+          {doc.processing ? (
+            <div className="spinner" style={{ width: 14, height: 14, margin: 0, borderTopColor: '#fff', borderLeftColor: 'rgba(255,255,255,0.3)', borderBottomColor: 'rgba(255,255,255,0.3)', borderRightColor: 'rgba(255,255,255,0.3)' }} />
+          ) : (
+            <DeltaBadge delta={doc.delta} />
+          )}
         </div>
         {doc.delta_rationale && (
           <div style={sb.rationale}>
@@ -497,23 +501,27 @@ export default function DocumentsTab({ profileKey, jobKey, onGraded, onProcessin
       filename: filename.trim() || 'document',
       content,
       uploaded_at: new Date().toISOString(),
+      uploaded_by: 'You',
       delta: null,
       delta_rationale: null,
+      processing: true,
     }
     setDocuments((prev) => [...prev, optimistic])
     // Auto re-grade then synthesize — onGraded owns the full chain and clears processing
     onProcessingChange?.(profileKey, 'Grading…')
     try {
       const gradeResult = await gradeCandidate(jobKey, profileKey)
+      
+      // Re-fetch immediately after grading to pick up delta / delta_rationale
+      getExtraDocuments(profileKey, jobKey)
+        .then((data) => setDocuments(data.documents || []))
+        .catch(console.error)
+
       await onGraded?.(gradeResult)  // awaited: score update → synthesis → processing cleared
     } catch (e) {
-      console.error('auto-grade failed:', e)
+      console.error('grading failed:', e)
       onProcessingChange?.(profileKey, null)
     }
-    // Re-fetch after grading to pick up delta / delta_rationale
-    getExtraDocuments(profileKey, jobKey)
-      .then((data) => setDocuments(data.documents || []))
-      .catch(console.error)
   }
 
   const handleFileUpload = async (file) => {
@@ -526,18 +534,22 @@ export default function DocumentsTab({ profileKey, jobKey, onGraded, onProcessin
         filename: file.name,
         content: uploaded.content || '',
         uploaded_at: new Date().toISOString(),
+        uploaded_by: 'You',
         delta: null,
         delta_rationale: null,
+        processing: true,
       }
       setDocuments((prev) => [...prev, optimistic])
       
       onProcessingChange?.(profileKey, 'Grading…')
       const result = await gradeCandidate(jobKey, profileKey)
-      await onGraded?.(result)
-      // Re-fetch after grading to pick up delta / delta_rationale
+
+      // Re-fetch immediately after grading to pick up delta / delta_rationale
       getExtraDocuments(profileKey, jobKey)
         .then((data) => setDocuments(data.documents || []))
         .catch(console.error)
+
+      await onGraded?.(result)
     } catch (e) {
       console.error('file upload/processing failed:', e)
       onProcessingChange?.(profileKey, null)
