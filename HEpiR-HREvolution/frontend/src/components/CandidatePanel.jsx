@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getCandidate, synthesizeCandidate, getStoredSynthesis, updateBonus, getJobStages, updateCandidateStage } from '../services/api'
+import { getCandidate, synthesizeCandidate, getStoredSynthesis, updateBonus, getJobStages, updateCandidateStage, generateEmail } from '../services/api'
 import AskAssistant from './AskAssistant'
 import DocumentsTab from './DocumentsTab'
 
@@ -353,7 +353,7 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
 
           {/* Tabs — keyed to candidateRef so animation replays per profile */}
           <div key={candidateRef?.profile_key + '-tabs'} style={s.tabs}>
-            {['overview', 'synthesis', 'scoring', 'documents', 'resume', 'ask'].map((tab, i) => (
+            {['overview', 'synthesis', 'scoring', 'documents', 'resume', 'email', 'ask'].map((tab, i) => (
               <div
                 key={tab}
                 className="anim-tab"
@@ -391,6 +391,8 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
               />
             ) : activeTab === 'resume' ? (
               <ResumeTab profile={profile} />
+            ) : activeTab === 'email' ? (
+              <EmailTab job={job} candidateRef={candidateRef} />
             ) : (
               <div key={activeTab + candidateRef.profile_key} className="anim-content">
                 {activeTab === 'overview' && (
@@ -741,5 +743,122 @@ function ResumeTab({ profile }) {
       }}
       title="Resume PDF"
     />
+  )
+}
+
+function EmailTab({ job, candidateRef }) {
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+  const [emailData, setEmailData] = useState({ subject: '', body: '', to: candidateRef.email || '' })
+  const [guidelines, setGuidelines] = useState('')
+
+  const handleGenerate = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await generateEmail(job.key, candidateRef.profile_key, guidelines)
+      setEmailData({ ...emailData, subject: data.subject, body: data.body })
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleOpenMailClient = () => {
+    if (!emailData.to || !emailData.subject || !emailData.body) return
+    
+    const subject = encodeURIComponent(emailData.subject)
+    const body = encodeURIComponent(emailData.body)
+    
+    // Direct Gmail Compose URL - this is much more reliable for a "popup" feel
+    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${emailData.to}&su=${subject}&body=${body}`
+    
+    // Open in a real small popup window
+    const width = 800
+    const height = 700
+    const left = (window.innerWidth / 2) - (width / 2)
+    const top = (window.innerHeight / 2) - (height / 2)
+    
+    window.open(
+      gmailUrl, 
+      'GmailCompose', 
+      `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes,status=yes`
+    )
+  }
+
+  return (
+    <div className="anim-content">
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 12 }}>Email Candidate</div>
+        
+        <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px', marginBottom: 16 }}>
+          <div style={{ marginBottom: 16, padding: '12px', background: '#f8f9fa', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
+            <div style={{ fontSize: '.75rem', fontWeight: 600, color: 'var(--accent)', marginBottom: 6 }}>Generation Guidelines</div>
+            <textarea
+              value={guidelines}
+              onChange={(e) => setGuidelines(e.target.value)}
+              style={{ width: '100%', minHeight: 60, padding: '8px', border: '1px solid var(--border)', borderRadius: 'var(--radius)', fontSize: '.8rem', background: '#fff', resize: 'vertical' }}
+              placeholder="Ex: 'Interview invitation', 'Polite rejection', 'Technical follow-up'..."
+            />
+          </div>
+
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: '.8rem', color: 'var(--text-muted)', marginBottom: 4 }}>To:</div>
+            <input
+              type="text"
+              value={emailData.to}
+              onChange={(e) => setEmailData({ ...emailData, to: e.target.value })}
+              style={{ width: '100%', padding: '8px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--surface)', fontSize: '.875rem' }}
+              placeholder="candidate@email.com"
+            />
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: '.8rem', color: 'var(--text-muted)', marginBottom: 4 }}>Subject:</div>
+            <input
+              type="text"
+              value={emailData.subject}
+              onChange={(e) => setEmailData({ ...emailData, subject: e.target.value })}
+              style={{ width: '100%', padding: '8px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--surface)', fontSize: '.875rem' }}
+              placeholder="Email subject"
+            />
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: '.8rem', color: 'var(--text-muted)', marginBottom: 4 }}>Message:</div>
+            <textarea
+              value={emailData.body}
+              onChange={(e) => setEmailData({ ...emailData, body: e.target.value })}
+              style={{ width: '100%', minHeight: 200, padding: '12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--surface)', fontSize: '.875rem', lineHeight: 1.5, resize: 'vertical' }}
+              placeholder="Email body content..."
+            />
+          </div>
+
+          <div style={{ display: 'flex', gap: 12 }}>
+            <button 
+              className="btn-secondary" 
+              onClick={handleGenerate} 
+              disabled={loading}
+              style={{ flex: 1 }}
+            >
+              {loading ? <div className="spinner" style={{ width: 14, height: 14, border: '2px solid #666', borderTopColor: 'transparent' }} /> : 'Generate with AI'}
+            </button>
+            <button 
+              className="btn-primary" 
+              onClick={handleOpenMailClient} 
+              disabled={loading || !emailData.subject || !emailData.body || !emailData.to}
+              style={{ flex: 1 }}
+            >
+              Open in Mail Client
+            </button>
+          </div>
+
+          {error && (
+            <div style={{ marginTop: 12, padding: '8px 12px', background: '#ffebee', color: '#c62828', borderRadius: 'var(--radius)', fontSize: '.8rem', textAlign: 'center' }}>
+              {error}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   )
 }

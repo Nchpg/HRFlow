@@ -60,6 +60,11 @@ export const synthesizeCandidate = (jobKey, profileKey) =>
   request('POST', '/ai/synthesize', { job_key: jobKey, profile_key: profileKey })
 export const askQuestions = (jobKey, profileKey) =>
   request('POST', '/ai/ask', { job_key: jobKey, profile_key: profileKey })
+export const generateEmail = (jobKey, profileKey, guidelines = '') => {
+  const params = new URLSearchParams({ job_key: jobKey })
+  if (guidelines) params.append('guidelines', guidelines)
+  return request('POST', `/candidates/${profileKey}/email/generate?${params.toString()}`)
+}
 
 // ── Extra Documents ────────────────────────────────────────────────────────
 export const getExtraDocuments = (profileKey, jobKey) =>

@@ -266,3 +266,63 @@ async def generate_questions(job: dict, profile: dict, extra_docs: list[dict] = 
         return json.loads(raw)
     except json.JSONDecodeError:
         return {"questions": [{"category": "General", "question": raw}]}
+
+
+# ---------------------------------------------------------------------------
+# Email Generation
+# ---------------------------------------------------------------------------
+
+EMAIL_SYSTEM = """You are an expert HR recruitment specialist. Your goal is to draft a personalized, professional, and engaging email to a candidate based on their profile, the job description, and specific user guidelines.
+
+Your email should:
+1.  STRICTLY FOLLOW the "user_guidelines" provided (e.g., if the user asks for an interview invitation, a rejection, or a technical follow-up, you MUST draft the email accordingly).
+2.  Acknowledge the candidate's specific background and why they caught your eye, using the CV and extra documents for personalization.
+3.  Briefly summarize the job opportunity.
+4.  Be polite, warm, and professional.
+5.  Be concise (under 200 words).
+
+Input context provided:
+- Job Title & Description
+- Candidate Name & Profile (skills, experiences)
+- Synthesis analysis (strengths, weaknesses)
+- Extra documents (interview transcripts, tests)
+- User guidelines (specific instructions for this email)
+
+The output must be strictly valid JSON:
+{
+  "subject": "<Compelling email subject line>",
+  "body": "<Personalized email body, use [Candidate Name] as placeholder if name not provided, but try to use their real name if available. Always sign off from 'HepiR HRevolution team'.>"
+}"""
+
+
+async def generate_email(job: dict, profile: dict, synthesis: dict = None, guidelines: str = None, extra_docs: list[dict] = None) -> dict:
+    """Generate a personalized recruitment email for a candidate."""
+    user_content = json.dumps(
+        {
+            "job_title": job.get("name", ""),
+            "job_summary": job.get("summary", ""),
+            "candidate_name": f"{profile.get('info', {}).get('first_name', '')} {profile.get('info', {}).get('last_name', '')}",
+            "candidate_skills": [_skill_name(s) for s in profile.get("skills", [])],
+            "candidate_experiences": [
+                e.get("title") for e in profile.get("experiences", [])
+            ],
+            "extra_documents": [
+                {
+                    "filename": d.get("filename", ""),
+                    "content": d.get("content", ""),
+                }
+                for d in (extra_docs or [])
+            ],
+            "synthesis": synthesis,
+            "user_guidelines": guidelines,
+        },
+        ensure_ascii=False,
+    )
+    raw = await _chat(EMAIL_SYSTEM, user_content)
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return {
+            "subject": f"Opportunity: {job.get('name', '')}",
+            "body": raw
+        }
