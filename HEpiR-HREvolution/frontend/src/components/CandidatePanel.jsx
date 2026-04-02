@@ -215,10 +215,12 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
     if (stageDebounceRef.current) clearTimeout(stageDebounceRef.current)
     stageGenRef.current = 0
 
-    getCandidate(candidateRef.profile_key)
-      .then(p => {
+    Promise.all([
+      getCandidate(candidateRef.profile_key),
+      getStoredSynthesis(job.key, candidateRef.profile_key),
+    ]).then(async ([p, storedSynthesis]) => {
         setProfile(p)
-        // If candidateRef was missing score/bonus (e.g. newly added), try to get from tags
+        // If candidateRef was missing bonus (e.g. newly added), try to get from tags
         const scoreTag = (p.tags || []).find(t => t.name === `job_data_${job.key}`)
         if (scoreTag) {
           try {
@@ -230,21 +232,18 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
             }
           } catch (e) {}
         }
-      })
-      .catch(console.error)
-      .finally(() => setLoadingProfile(false))
 
-    getStoredSynthesis(job.key, candidateRef.profile_key)
-      .then(async (data) => {
-        if (data) {
-          setSynthesis(data)
-        } else {
+        if (storedSynthesis) {
+          setSynthesis(storedSynthesis)
+        } else if (scoreTag) {
+          // Already graded but synthesis missing — generate it (single call, no duplicate)
           const generated = await synthesizeCandidate(job.key, candidateRef.profile_key)
           if (generated) setSynthesis(generated)
         }
+        // Not yet graded: synthesis will be generated via onGraded after the first grade run
       })
       .catch(console.error)
-      .finally(() => setLoadingSynth(false))
+      .finally(() => { setLoadingProfile(false); setLoadingSynth(false) })
     
     getJobStages(job.key)
       .then(data => setStages(data.stages))
