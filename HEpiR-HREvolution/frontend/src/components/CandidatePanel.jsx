@@ -340,9 +340,6 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
                   <span className={`score-badge ${scoreBadgeClass(totalScore)}`}>
                     {totalScore !== null ? `${Math.round(totalScore * 100)}%` : 'Not scored'}
                   </span>
-                  {processingStatus && (
-                    <div className="spinner" style={{ width: 14, height: 14, margin: 0, flexShrink: 0 }} />
-                  )}
                 </div>
 
                 <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -724,7 +721,7 @@ function ChipSection({ title, items = [], color }) {
       <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 8 }}>{title}</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
         {items.map((item, i) => (
-          <span key={i} style={{ fontSize: '.75rem', padding: '.2rem .6rem', borderRadius: 99, background: color, color: '#333', fontWeight: 500 }}>
+          <span key={i} style={{ fontSize: '.75rem', padding: '4px 10px', borderRadius: 8, background: color, color: '#333', fontWeight: 500, lineHeight: 1.4, display: 'inline-block' }}>
             {typeof item === 'object' ? (item.name || item.description || JSON.stringify(item)) : item}
           </span>
         ))}

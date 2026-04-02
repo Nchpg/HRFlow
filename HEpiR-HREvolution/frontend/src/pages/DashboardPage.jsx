@@ -27,6 +27,7 @@ export default function DashboardPage() {
   const [processingProfiles, setProcessingProfiles] = useState({})
   const [candidateRefreshKey, setCandidateRefreshKey] = useState(0)
   const [candidateOverride, setCandidateOverride] = useState(null)
+  const [fetchError, setFetchError] = useState(null)
 
   function handleJobStatusChange(jobKey, status) {
     setJobs((prev) => {
@@ -129,12 +130,12 @@ export default function DashboardPage() {
       setPendingKeys(stillPending)
 
       setJobs(updatedList)
-      if (updatedList.length > 0 && !selectedJob) setSelectedJob(updatedList[0])
       
       // Trigger a refresh on current job view candidates
       setCandidateRefreshKey(k => k + 1)
     } catch (e) {
       console.error(e)
+      setFetchError('Failed to load jobs. Check your network connection.')
     } finally {
       setLoadingJobs(false)
     }
@@ -152,7 +153,14 @@ export default function DashboardPage() {
   }, [jobs, selectedJob?.key])
 
   return (
-    <div style={{ display: 'flex', height: '100dvh', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', height: '100dvh', overflow: 'hidden', flexDirection: 'column' }}>
+      {fetchError && (
+        <div style={{ background: '#fef2f2', borderBottom: '1px solid #fecaca', color: '#b91c1c', fontSize: '.8rem', padding: '8px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+          <span>{fetchError}</span>
+          <button onClick={() => setFetchError(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#b91c1c', fontSize: '1rem', lineHeight: 1, padding: '0 4px' }}>✕</button>
+        </div>
+      )}
+      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
       <Sidebar
         jobs={jobs}
         selectedJobKey={selectedJob?.key}
@@ -187,10 +195,10 @@ export default function DashboardPage() {
           onStageChange={handleCandidateStageChange}
           onBonusSaved={(bonusDecimal) => {
             setCandidateOverride({ profileKey: selectedCandidate.profile_key, bonus: bonusDecimal })
-            setCandidateRefreshKey((k) => k + 1)
           }}
         />
       )}
+      </div>
     </div>
   )
 }

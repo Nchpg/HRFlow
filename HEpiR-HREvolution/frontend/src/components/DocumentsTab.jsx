@@ -488,9 +488,10 @@ export default function DocumentsTab({ profileKey, jobKey, onGraded, onProcessin
   }, [profileKey, jobKey])
 
   useEffect(() => {
-    if (listRef.current) {
-      listRef.current.scrollTop = listRef.current.scrollHeight
-    }
+    const frame = requestAnimationFrame(() => {
+      if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight
+    })
+    return () => cancelAnimationFrame(frame)
   }, [documents])
 
   const handleSend = async (filename, content) => {
@@ -511,11 +512,11 @@ export default function DocumentsTab({ profileKey, jobKey, onGraded, onProcessin
     onProcessingChange?.(profileKey, 'Grading…')
     try {
       const gradeResult = await gradeCandidate(jobKey, profileKey)
-      
-      // Re-fetch immediately after grading to pick up delta / delta_rationale
-      getExtraDocuments(profileKey, jobKey)
-        .then((data) => setDocuments(data.documents || []))
-        .catch(console.error)
+
+      // Use documents returned directly from the grading response — avoids HRFlow indexing latency
+      if (gradeResult.documents?.length > 0) {
+        setDocuments(gradeResult.documents)
+      }
 
       await onGraded?.(gradeResult)  // awaited: score update → synthesis → processing cleared
     } catch (e) {
@@ -544,10 +545,9 @@ export default function DocumentsTab({ profileKey, jobKey, onGraded, onProcessin
       onProcessingChange?.(profileKey, 'Grading…')
       const result = await gradeCandidate(jobKey, profileKey)
 
-      // Re-fetch immediately after grading to pick up delta / delta_rationale
-      getExtraDocuments(profileKey, jobKey)
-        .then((data) => setDocuments(data.documents || []))
-        .catch(console.error)
+      if (result.documents?.length > 0) {
+        setDocuments(result.documents)
+      }
 
       await onGraded?.(result)
     } catch (e) {

@@ -444,7 +444,7 @@ async def update_documents_with_deltas(profile_key: str, job_key: str, scored_do
             try:
                 doc_data = _json.loads(meta.get("value", "{}"))
                 doc_data["delta"] = scored_map[name].get("delta", 0.0)
-                doc_data["delta_rationale"] = scored_map[name].get("rationale", "")
+                doc_data["delta_rationale"] = scored_map[name].get("delta_rationale", "")
                 meta = {"name": name, "value": _json.dumps(doc_data)}
             except Exception:
                 pass

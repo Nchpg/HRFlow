@@ -211,7 +211,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
     transform: translateY(5px);
   }
   to {
-    opacity: 1;
+    opacity: var(--final-opacity, 1);
     transform: translateY(0);
   }
 }

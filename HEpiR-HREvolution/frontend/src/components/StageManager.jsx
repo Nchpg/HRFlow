@@ -260,7 +260,7 @@ export default function StageManager({ job, onClose, onStatusChange }) {
             <div style={{ textAlign: 'center', padding: 20 }}><div className="spinner" /></div>
           ) : (
             <div>
-              {stages.map((stage, i) => {
+              {stages.filter(stage => stage.key !== 'rejected').map((stage, i) => {
                 const isCustom = !stage.builtin
                 const canMoveUp = isCustom && i > 1 && !stages[i-1].builtin
                 const canMoveDown = isCustom && i < stages.length - 3 && !stages[i+1].builtin

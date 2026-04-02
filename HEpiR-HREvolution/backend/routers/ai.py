@@ -74,14 +74,22 @@ async def grade_candidate(req: GradeRequest):
             for doc in to_score:
                 other_docs = [d for d in extra_docs if d["id"] != doc["id"]]
                 score_result = await llm.score_single_document(job, profile, doc, other_docs)
-                newly_scored.append({**doc, "delta": score_result["delta"], "rationale": score_result["rationale"]})
+                newly_scored.append({**doc, "delta": score_result["delta"], "delta_rationale": score_result["rationale"]})
                 print(f"[grade] new doc '{doc.get('filename')}' delta={score_result['delta']} → {score_result['rationale']}", flush=True)
             if newly_scored:
                 await hrflow.update_documents_with_deltas(req.profile_key, req.job_key, newly_scored)
             all_deltas = [d["delta"] for d in already_scored] + [d["delta"] for d in newly_scored]
             ai_adjustment = round(max(-0.3, min(0.3, sum(all_deltas))), 3)
+            # Build complete document list in memory — avoids HRFlow indexing latency on re-fetch
+            newly_by_id = {d["id"]: d for d in newly_scored}
+            scored_documents = [
+                {**d, "delta": newly_by_id[d["id"]]["delta"], "delta_rationale": newly_by_id[d["id"]]["delta_rationale"]}
+                if d["id"] in newly_by_id else d
+                for d in extra_docs
+            ]
         else:
             ai_adjustment = 0.0
+            scored_documents = []
         print(f"[grade] total ai_adjustment={ai_adjustment} ({len(already_scored) if extra_docs else 0} cached, {len(newly_scored) if extra_docs else 0} new)", flush=True)
 
         # Persist updated scores — return immediately so the frontend can update the display
@@ -98,6 +106,7 @@ async def grade_candidate(req: GradeRequest):
         return {
             "base_score": base_score,
             "ai_adjustment": ai_adjustment,
+            "documents": scored_documents,
         }
     except Exception as e:
         print(f"grade error: {e}", flush=True)

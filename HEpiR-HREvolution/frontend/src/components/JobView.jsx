@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { getJobCandidates, getCandidate, gradeCandidate, synthesizeCandidate, updateJobStatus, getJobStages } from '../services/api'
+import { getJobCandidates, getCandidate, gradeCandidate, synthesizeCandidate, getJobStages } from '../services/api'
 import { storage } from '../services/storage'
 import UploadResumeModal from './UploadResumeModal'
 import JobInfoModal from './JobInfoModal'
@@ -109,7 +109,7 @@ const s = {
     background: selected ? '#f0f7ff' : (hovering ? '#f8f9fa' : 'transparent'),
     cursor: 'pointer',
     transition: 'background 200ms var(--ease-out-expo)',
-    ...(rejected && { opacity: 0.45 }),
+    ...(rejected && { opacity: 0.45, '--final-opacity': 0.45 }),
   }),
   td: {
     padding: '13px 16px',
