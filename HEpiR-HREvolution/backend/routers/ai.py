@@ -79,7 +79,7 @@ async def grade_candidate(req: GradeRequest):
             if newly_scored:
                 await hrflow.update_documents_with_deltas(req.profile_key, req.job_key, newly_scored)
             all_deltas = [d["delta"] for d in already_scored] + [d["delta"] for d in newly_scored]
-            ai_adjustment = round(max(-0.3, min(0.3, sum(all_deltas))), 3)
+            ai_adjustment = round(sum(all_deltas), 3)
             # Build complete document list in memory — avoids HRFlow indexing latency on re-fetch
             newly_by_id = {d["id"]: d for d in newly_scored}
             scored_documents = [
