@@ -91,6 +91,7 @@ const s = {
     width: '100%',
     borderCollapse: 'collapse',
     marginTop: 16,
+    tableLayout: 'fixed',
   },
   th: {
     textAlign: 'left',
@@ -114,6 +115,7 @@ const s = {
   td: {
     padding: '13px 16px',
     borderBottom: '1px solid var(--border)',
+    overflow: 'hidden',
     fontSize: '.9375rem',
     verticalAlign: 'middle',
   },
@@ -135,6 +137,11 @@ const s = {
     display: 'flex',
     alignItems: 'center',
     gap: 10,
+    minWidth: 0,
+  },
+  nameText: {
+    minWidth: 0,
+    overflow: 'hidden',
   },
   empty: {
     textAlign: 'center',
@@ -402,11 +409,11 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
           <table style={s.table}>
             <thead>
               <tr>
-                <th style={{ ...s.th, width: 36 }}>#</th>
-                <th style={s.th}>Candidate</th>
-                <th style={s.th}>Stage</th>
-                <th style={{ ...s.th, textAlign: 'center' }}>Score</th>
-                <th style={{ ...s.th, textAlign: 'center' }}>Bonus</th>
+                <th style={{ ...s.th, width: '5%' }}>#</th>
+                <th style={{ ...s.th, width: '38%' }}>Candidate</th>
+                <th style={{ ...s.th, width: '27%' }}>Stage</th>
+                <th style={{ ...s.th, width: '16%', textAlign: 'center' }}>Score</th>
+                <th style={{ ...s.th, width: '14%', textAlign: 'center' }}>Bonus</th>
               </tr>
             </thead>
             <tbody>
@@ -433,15 +440,15 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
                             ? <img src={c.picture} alt={initials} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} onError={(e) => { e.target.style.display = 'none' }} />
                             : initials}
                         </div>
-                        <div>
-                          <div style={{ fontWeight: 600 }}>{c.first_name} {c.last_name}</div>
+                        <div style={s.nameText}>
+                          <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.first_name} {c.last_name}</div>
                           {processingProfiles[c.profile_key] && (
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '.7rem', color: 'var(--accent)', marginTop: 2 }}>
                               <div className="spinner" style={{ width: 9, height: 9 }} />
                               {processingProfiles[c.profile_key]}
                             </div>
                           )}
-                          {c.email && <div style={{ fontSize: '.75rem', color: 'var(--text-muted)' }}>{c.email}</div>}
+                          {c.email && <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.email}</div>}
                         </div>
                       </div>
                     </td>

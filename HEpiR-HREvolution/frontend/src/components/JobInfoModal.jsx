@@ -32,9 +32,16 @@ const s = {
   title: { flex: 1, fontWeight: 700, fontSize: '1.0625rem' },
   close: { background: 'transparent', border: 'none', fontSize: 18, cursor: 'pointer', color: 'var(--text-muted)' },
   body: { padding: '24px 20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 24 },
-  section: { display: 'flex', flexDirection: 'column', gap: 8 },
-  label: { fontSize: '.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.04em' },
-  text: { fontSize: '.9375rem', lineHeight: 1.6, color: 'var(--text)', whiteSpace: 'pre-wrap' },
+  section: {
+    display: 'flex', flexDirection: 'column', gap: 10,
+    borderLeft: '3px solid var(--accent)',
+    paddingLeft: 14,
+  },
+  label: {
+    fontSize: '.8rem', fontWeight: 700, color: 'var(--text)',
+    textTransform: 'uppercase', letterSpacing: '.07em',
+  },
+  text: { fontSize: '.9rem', lineHeight: 1.7, color: 'var(--text-muted)', whiteSpace: 'pre-wrap' },
   chipRow: { display: 'flex', flexWrap: 'wrap', gap: 8 },
   chip: (level) => ({
     fontSize: '.8rem',
