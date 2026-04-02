@@ -172,7 +172,7 @@ const s = {
   },
 }
 
-export default function CandidatePanel({ candidateRef, job, onClose, onProcessingChange, onScoreReady, processingStatus, onBonusSaved, onStageChange }) {
+export default function CandidatePanel({ candidateRef, job, onClose, onProcessingChange, onScoreReady, onSynthesisReady, processingStatus, onBonusSaved, onStageChange }) {
   const [closing, setClosing] = useState(false)
 
   function handleClose() {
@@ -182,7 +182,7 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
   }
 
   const [profile, setProfile] = useState(null)
-  const [synthesis, setSynthesis] = useState(null)
+  const [synthesis, setSynthesis] = useState(candidateRef?.synthesis || null)
   const [activeTab, setActiveTab] = useState('overview')
   const [loadingProfile, setLoadingProfile] = useState(true)
   const [loadingSynth, setLoadingSynth] = useState(false)
@@ -200,13 +200,29 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
   const stageGenRef = useRef(0)
   const [docsRefreshKey, setDocsRefreshKey] = useState(0)
 
+  // Use a ref to track the current profile key to detect changes without full state clear
+  const prevProfileKeyRef = useRef(candidateRef?.profile_key)
+
   useEffect(() => {
     if (!candidateRef || !job) return
-    setLoadingProfile(true)
-    setLoadingSynth(true)
-    setProfile(null)
-    setSynthesis(null)
-    setLocalScores(null)
+    const isNewProfile = prevProfileKeyRef.current !== candidateRef.profile_key
+    prevProfileKeyRef.current = candidateRef.profile_key
+
+    if (isNewProfile) {
+      setLoadingProfile(true)
+      setLoadingSynth(true)
+      setProfile(null)
+      setSynthesis(candidateRef.synthesis || null)
+      setLocalScores(null)
+      setActiveTab('overview')
+    } else {
+      // Profile is same, but candidateRef might have been updated (e.g. from synthesis or grading)
+      if (candidateRef.synthesis && candidateRef.synthesis !== synthesis) {
+        setSynthesis(candidateRef.synthesis)
+        setLoadingSynth(false)
+      }
+    }
+
     const b = Math.round((candidateRef.bonus || 0) * 100)
     setBonus(b)
     setSavedBonus(b)
@@ -217,7 +233,7 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
 
     Promise.all([
       getCandidate(candidateRef.profile_key),
-      getStoredSynthesis(job.key, candidateRef.profile_key),
+      candidateRef.synthesis ? Promise.resolve(candidateRef.synthesis) : getStoredSynthesis(job.key, candidateRef.profile_key),
     ]).then(async ([p, storedSynthesis]) => {
         setProfile(p)
         // If candidateRef was missing bonus (e.g. newly added), try to get from tags
@@ -235,20 +251,48 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
 
         if (storedSynthesis) {
           setSynthesis(storedSynthesis)
+          setLoadingSynth(false)
+          if (!candidateRef.synthesis) onSynthesisReady?.(storedSynthesis)
         } else if (scoreTag) {
-          // Already graded but synthesis missing — generate it (single call, no duplicate)
-          const generated = await synthesizeCandidate(job.key, candidateRef.profile_key)
-          if (generated) setSynthesis(generated)
+          // Already graded but synthesis missing. 
+          // Check if synthesis is already in flight (from another panel session)
+          if (processingStatus === 'Generating synthesis…') {
+            setLoadingSynth(true)
+            return
+          }
+
+          onProcessingChange?.(candidateRef.profile_key, 'Generating synthesis…')
+          setLoadingSynth(true)
+          try {
+            const generated = await synthesizeCandidate(job.key, candidateRef.profile_key)
+            if (generated) {
+              setSynthesis(generated)
+              onSynthesisReady?.(generated)
+            }
+          } catch (e) {
+            console.error(e)
+          } finally {
+            setLoadingSynth(false)
+            onProcessingChange?.(candidateRef.profile_key, 'Updating profile…')
+          }
+        } else {
+          // Not yet graded: synthesis will be generated via onGraded after the first grade run
+          setLoadingSynth(false)
         }
-        // Not yet graded: synthesis will be generated via onGraded after the first grade run
       })
       .catch(console.error)
-      .finally(() => { setLoadingProfile(false); setLoadingSynth(false) })
+      .finally(() => { 
+        setLoadingProfile(false)
+        // Only clear loadingSynth if we're not waiting for an external synthesis
+        if (processingStatus !== 'Generating synthesis…') {
+          setLoadingSynth(false)
+        }
+      })
     
     getJobStages(job.key)
       .then(data => setStages(data.stages))
       .catch(console.error)
-  }, [candidateRef?.profile_key, job?.key])
+  }, [candidateRef, job?.key])
 
   const handleBonusSave = async () => {
     if (!job || !candidateRef) return
@@ -406,11 +450,11 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
             onStageChange={handleStageChange}
           />
 
-          {/* Processing status banner */}
-          {!loadingProfile && (loadingSynth || processingStatus) && (
+          {/* Processing status banner — show if we're generating synthesis or have an external status, even during initial load */}
+          {(loadingSynth || processingStatus) && (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '7px 20px', fontSize: '.8rem', color: 'var(--accent)', background: '#f0f4ff', borderBottom: '1px solid var(--border)', lineHeight: 1 }}>
               <div className="spinner" style={{ width: 13, height: 13, flexShrink: 0, margin: 0 }} />
-              <span>{loadingSynth ? 'Generating synthesis…' : processingStatus}</span>
+              <span>{(loadingSynth || processingStatus === 'Generating synthesis…') ? 'Generating synthesis…' : (processingStatus || 'Loading…')}</span>
             </div>
           )}
 
@@ -444,12 +488,15 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
                   setLoadingSynth(true)
                   try {
                     const synth = await synthesizeCandidate(job.key, candidateRef.profile_key)
-                    if (synth) setSynthesis(synth)
+                    if (synth) {
+                      setSynthesis(synth)
+                      onSynthesisReady?.(synth)
+                    }
                   } catch (e) {
                     console.error('synthesis failed:', e)
                   } finally {
                     setLoadingSynth(false)
-                    onProcessingChange?.(candidateRef.profile_key, null)
+                    onProcessingChange?.(candidateRef.profile_key, 'Updating profile…')
                   }
                 }}
                 onProcessingChange={onProcessingChange}
@@ -464,7 +511,7 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
                   <OverviewTab profile={profile} />
                 )}
                 {activeTab === 'synthesis' && (
-                  <SynthesisTab synthesis={synthesis} loading={loadingSynth} />
+                  <SynthesisTab synthesis={synthesis} loading={loadingSynth || processingStatus === 'Generating synthesis…'} />
                 )}
                 {activeTab === 'scoring' && (
                   <ScoringTab

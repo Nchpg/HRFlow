@@ -160,7 +160,7 @@ const s = {
   }),
 }
 
-export default function JobView({ job, onSelectCandidate, processingProfiles = {}, refreshKey = 0, selectedProfileKey, onCandidateRefreshed, onProcessingChange, onJobStatusChange, candidateOverride }) {
+export default function JobView({ job, onSelectCandidate, processingProfiles = {}, refreshKey = 0, selectedProfileKey, onCandidateRefreshed, onProcessingChange, onJobStatusChange, candidateOverride, onScoreReady, onSynthesisReady }) {
   const [candidates, setCandidates] = useState([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
@@ -272,18 +272,29 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
 
   useEffect(() => {
     if (!candidateOverride) return
-    setCandidates(prev => prev.map(c => {
-      if (c.profile_key !== candidateOverride.profileKey) return c
-      const patch = {}
-      if (candidateOverride.bonus !== undefined) patch.bonus = candidateOverride.bonus
-      if (candidateOverride.stage !== undefined) patch.stage = candidateOverride.stage
-      if (candidateOverride.base_score !== undefined) {
-        patch.base_score = candidateOverride.base_score
-        patch.ai_adjustment = candidateOverride.ai_adjustment ?? 0
-        patch.score = candidateOverride.base_score + (candidateOverride.ai_adjustment ?? 0)
+    setCandidates(prev => {
+      const newList = prev.map(c => {
+        if (c.profile_key !== candidateOverride.profileKey) return c
+        const patch = {}
+        if (candidateOverride.bonus !== undefined) patch.bonus = candidateOverride.bonus
+        if (candidateOverride.stage !== undefined) patch.stage = candidateOverride.stage
+        if (candidateOverride.synthesis !== undefined) patch.synthesis = candidateOverride.synthesis
+        if (candidateOverride.base_score !== undefined) {
+          patch.base_score = candidateOverride.base_score
+          patch.ai_adjustment = candidateOverride.ai_adjustment ?? 0
+          patch.score = candidateOverride.base_score + (candidateOverride.ai_adjustment ?? 0)
+        }
+        return { ...c, ...patch }
+      })
+
+      // Sync the selected candidate back to parent if it was updated
+      if (selectedProfileKeyRef.current === candidateOverride.profileKey) {
+        const updated = newList.find(c => c.profile_key === candidateOverride.profileKey)
+        if (updated) onCandidateRefreshedRef.current?.(updated)
       }
-      return { ...c, ...patch }
-    }))
+
+      return newList
+    })
   }, [candidateOverride])
 
   useEffect(() => {
@@ -499,9 +510,22 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
               onProcessingChange(profileKey, 'Grading…')
               ;(async () => {
                 try {
-                  await gradeCandidate(job.key, profileKey)
+                  const gradeResult = await gradeCandidate(job.key, profileKey)
+                  // If this candidate happens to be selected, update the parent state immediately
+                  if (selectedProfileKeyRef.current === profileKey) {
+                    onScoreReady?.({ 
+                      profileKey,
+                      base_score: gradeResult.base_score ?? null, 
+                      ai_adjustment: gradeResult.ai_adjustment ?? 0 
+                    })
+                  }
+                  
                   onProcessingChange(profileKey, 'Generating synthesis…')
-                  await synthesizeCandidate(job.key, profileKey)
+                  const synth = await synthesizeCandidate(job.key, profileKey)
+                  
+                  if (selectedProfileKeyRef.current === profileKey && synth) {
+                    onSynthesisReady?.(synth)
+                  }
                 } catch (e) {
                   console.error('background grade/synthesize failed:', e)
                 } finally {

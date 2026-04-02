@@ -48,8 +48,8 @@ export default function DashboardPage() {
     setProcessingProfiles((prev) =>
       status ? { ...prev, [profileKey]: status } : Object.fromEntries(Object.entries(prev).filter(([k]) => k !== profileKey))
     )
-    // When processing finishes, trigger a list refresh so scores update
-    if (!status) setCandidateRefreshKey((k) => k + 1)
+    // Trigger a list refresh when processing finishes or when entering "Updating profile…"
+    if (!status || status === 'Updating profile…') setCandidateRefreshKey((k) => k + 1)
   }
 
   async function fetchJobs() {
@@ -176,9 +176,23 @@ export default function DashboardPage() {
         refreshKey={candidateRefreshKey}
         candidateOverride={candidateOverride}
         selectedProfileKey={selectedCandidate?.profile_key}
-        onCandidateRefreshed={(c) => setSelectedCandidate(c)}
+        onCandidateRefreshed={(c) => {
+          setSelectedCandidate(c)
+          // Clear any lingering "Updating profile…" banner now that the refresh is done
+          setProcessingProfiles(prev =>
+            Object.fromEntries(Object.entries(prev).filter(([k]) => k !== c.profile_key))
+          )
+        }}
         onProcessingChange={setProcessing}
         onJobStatusChange={handleJobStatusChange}
+        onScoreReady={(scoreData) => {
+          if (scoreData)
+            setCandidateOverride({ profileKey: scoreData.profileKey || selectedCandidate?.profile_key, ...scoreData })
+        }}
+        onSynthesisReady={(synthesis) => {
+          if (selectedCandidate)
+            setCandidateOverride({ profileKey: selectedCandidate.profile_key, synthesis })
+        }}
       />
 
       {selectedCandidate && (
@@ -190,6 +204,10 @@ export default function DashboardPage() {
           onScoreReady={(scoreData) => {
             if (selectedCandidate && scoreData)
               setCandidateOverride({ profileKey: selectedCandidate.profile_key, ...scoreData })
+          }}
+          onSynthesisReady={(synthesis) => {
+            if (selectedCandidate)
+              setCandidateOverride({ profileKey: selectedCandidate.profile_key, synthesis })
           }}
           processingStatus={processingProfiles[selectedCandidate.profile_key] || null}
           onStageChange={handleCandidateStageChange}
