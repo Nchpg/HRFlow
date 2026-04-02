@@ -2,6 +2,7 @@
 
 import base64
 import json
+import re
 from openai import AsyncOpenAI
 from config import settings
 
@@ -67,6 +68,15 @@ async def transcribe_audio(audio_bytes: bytes, filename: str) -> str:
     )
     return response.choices[0].message.content.strip()
 
+def _parse_json(raw: str):
+    """
+    Nettoie la réponse de l'IA (enlève le markdown ```json) 
+    et extrait le bloc JSON pur.
+    """
+    # Cherche tout ce qui est entre le premier { ou [ et le dernier } ou ]
+    match = re.search(r'(\{.*\}|\[.*\])', raw, re.DOTALL)
+    clean_str = match.group(1) if match else raw
+    return json.loads(clean_str)
 
 # ---------------------------------------------------------------------------
 # Per-document scoring
@@ -124,7 +134,7 @@ async def score_single_document(
     }, ensure_ascii=False)
     raw = await _chat(DOCUMENT_SCORE_SYSTEM, user_content)
     try:
-        result = json.loads(raw)
+        result = _parse_json(raw)
         delta = max(-0.2, min(0.2, float(result.get("delta", 0.0))))
         return {"delta": round(delta, 3), "rationale": result.get("rationale", "")}
     except (json.JSONDecodeError, ValueError):
@@ -142,6 +152,21 @@ write a concise structured recruitment summary.
 If some input data is missing (e.g. empty job summary or empty candidate skills), do NOT output "Missing inputs" or LaTeX.
 Instead, use the available information (like the job title and candidate experiences) to provide the best possible analysis.
 
+Critical Instruction on Job Alignment:
+- The job description is the PRIMARY reference for evaluation.
+- You MUST use the job requirements to determine what counts as a strength or a weakness.
+- A strength = something that directly matches or exceeds a stated job requirement.
+- A weakness = something explicitly required by the job but missing or insufficient in the candidate profile or disproven by later documents.
+- You MUST NOT evaluate skills that are not required by the job.
+
+Critical Instruction on Document Order and Contradictions:
+- You MUST analyze documents in their chronological or provided order.
+- If a later document contradicts or weakens information from an earlier document, you MUST:
+  1. Explicitly highlight the contradiction.
+  2. PRIORITIZE the information from the most recent / later document..
+- If multiple documents conflict, always give more weight to the latest or most reliable evidence.
+- Clearly explain how the evaluation evolved based on the sequence of documents.
+
 Critical Instruction on Contradictions:
 - Compare the candidate's claims (from CV/profile) with evidence from extra documents.
 - If an extra document (e.g., an interview) reveals a weakness or lack of skill that contradicts a claim in the CV,
@@ -149,7 +174,9 @@ Critical Instruction on Contradictions:
 - Adjust strengths and weaknesses accordingly: what was a "strength" in the CV might become a "weakness" if the
   interview evidence shows they actually lack that skill.
 
-Rules for strengths and weaknesses:
+Rules for strengths weaknesses and upskills:
+- You MUST provide at least one strength, at least one weakness, and at least one upskilling recommendation.
+- Every item in the "strengths", "weaknesses", and "upskilling" arrays MUST be very short and concise (max 5-7 words). Do NOT use long sentences.
 - strengths: skills, experiences, or qualities that directly match or exceed the job requirements,
   verified across ALL available documents.
 - weaknesses: ONLY skills or experiences that are EXPLICITLY required by the job description AND clearly absent
@@ -208,7 +235,7 @@ async def synthesize_candidate(
     )
     raw = await _chat(SYNTHESIS_SYSTEM, user_content)
     try:
-        data = json.loads(raw)
+        data = _parse_json(raw)
         # Ensure it's a dict and has summary
         if isinstance(data, dict) and data.get("summary"):
             return data
@@ -273,7 +300,7 @@ async def generate_questions(job: dict, profile: dict, extra_docs: list[dict] = 
     )
     raw = await _chat(ASK_SYSTEM, user_content)
     try:
-        return json.loads(raw)
+        return _parse_json(raw)
     except json.JSONDecodeError:
         return {"questions": [{"category": "General", "question": raw}]}
 
@@ -330,7 +357,7 @@ async def generate_email(job: dict, profile: dict, synthesis: dict = None, guide
     )
     raw = await _chat(EMAIL_SYSTEM, user_content)
     try:
-        return json.loads(raw)
+        return _parse_json(raw)
     except json.JSONDecodeError:
         return {
             "subject": f"Opportunity: {job.get('name', '')}",

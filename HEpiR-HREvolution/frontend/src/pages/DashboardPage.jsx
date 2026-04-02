@@ -192,15 +192,17 @@ export default function DashboardPage() {
         onCandidateRefreshed={(c) => {
           if (c.last_name || c.first_name) setSelectedCandidate(c)
           // Clear any lingering "Updating profile…" banner now that the refresh is done
-          const pk = c.profile_key
-          if (pk) {
-            setProcessingProfiles(prev => {
-              if (!prev[pk]) return prev
+        const pk = c.profile_key
+        if (pk) {
+          setProcessingProfiles(prev => {
+            if (prev[pk] === 'Updating profile…') { // <--- CORRECTION ICI
               const next = { ...prev }
               delete next[pk]
               return next
-            })
-          }
+            }
+            return prev
+          })
+        }
         }}
         onProcessingChange={setProcessing}
         onJobStatusChange={handleJobStatusChange}
