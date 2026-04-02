@@ -48,8 +48,8 @@ export default function DashboardPage() {
     setProcessingProfiles((prev) =>
       status ? { ...prev, [profileKey]: status } : Object.fromEntries(Object.entries(prev).filter(([k]) => k !== profileKey))
     )
-    // Trigger a list refresh when processing finishes or when entering "Updating profile…"
-    if (!status || status === 'Updating profile…') setCandidateRefreshKey((k) => k + 1)
+    // Trigger a list refresh when entering "Updating profile…" — this is when we expect HRFlow to have indexed
+    if (status === 'Updating profile…') setCandidateRefreshKey((k) => k + 1)
   }
 
   async function fetchJobs() {

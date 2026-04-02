@@ -286,6 +286,10 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 /* Candidate table rows — staggered fadeUp.
    Pass --row-index as inline CSS var to control per-row delay. */
 .candidate-row {
+  transition: background 200ms var(--ease-out-expo);
+}
+
+.anim-row {
   animation: fadeUp var(--duration-reveal) var(--ease-out-expo) backwards;
   animation-delay: calc(var(--row-index, 0) * 40ms);
 }

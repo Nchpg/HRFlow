@@ -173,6 +173,7 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
   const [sortBy, setSortBy] = useState('score')
   const [stageOrder, setStageOrder] = useState({})
   const [stageLabels, setStageLabels] = useState({})
+  const [animatingJobKey, setAnimatingJobKey] = useState(null)
 
   const selectedProfileKeyRef = useRef(selectedProfileKey)
   const onCandidateRefreshedRef = useRef(onCandidateRefreshed)
@@ -187,7 +188,10 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
     
     // Only show full spinner if we have NO candidates in state
     const hadData = candidates.length > 0
-    if (!hadData) setLoading(true)
+    if (!hadData) {
+      setLoading(true)
+      setAnimatingJobKey(fetchedForKey)
+    }
 
     try {
       void refreshKey
@@ -237,11 +241,29 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
       if (currentJobKeyRef.current !== fetchedForKey) return
       setPendingKeys(job.key, stillPending)
       
-      setCandidates(list)
-      storage.set(`candidates_${job.key}`, list)
+      // If we have an active override, apply it to the freshly fetched list
+      // This prevents the "flicker" where the list jumps back to stale HRFlow data before indexing finishes
+      const finalCands = list.map(c => {
+        if (candidateOverride && c.profile_key === candidateOverride.profileKey) {
+          const patch = {}
+          if (candidateOverride.bonus !== undefined) patch.bonus = candidateOverride.bonus
+          if (candidateOverride.stage !== undefined) patch.stage = candidateOverride.stage
+          if (candidateOverride.synthesis !== undefined) patch.synthesis = candidateOverride.synthesis
+          if (candidateOverride.base_score !== undefined) {
+            patch.base_score = candidateOverride.base_score
+            patch.ai_adjustment = candidateOverride.ai_adjustment ?? 0
+            patch.score = candidateOverride.base_score + (candidateOverride.ai_adjustment ?? 0)
+          }
+          return { ...c, ...patch }
+        }
+        return c
+      })
+
+      setCandidates(finalCands)
+      storage.set(`candidates_${job.key}`, finalCands)
 
       if (selectedProfileKeyRef.current) {
-        const updated = list.find((c) => c.profile_key === selectedProfileKeyRef.current)
+        const updated = finalCands.find((c) => c.profile_key === selectedProfileKeyRef.current)
         if (updated) onCandidateRefreshedRef.current?.(updated)
       }
     } catch (e) {
@@ -249,22 +271,33 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
     } finally {
       if (currentJobKeyRef.current === fetchedForKey) setLoading(false)
     }
-  }, [job, refreshKey])
+  }, [job, refreshKey, candidateOverride])
 
   useEffect(() => {
     if (job?.key) {
       const cached = storage.get(`candidates_${job.key}`)
       if (cached) {
         setCandidates(cached)
+        setAnimatingJobKey(null) // Don't animate if we have cached data
       } else {
         setCandidates([])
+        setAnimatingJobKey(job.key)
       }
     } else {
       setCandidates([])
+      setAnimatingJobKey(null)
     }
     fetchCandidates()
     setLocalStatus(job?.status || 'open')
   }, [job?.key, job?.status])
+
+  // Clear animation state after initial reveal to prevent re-triggering on updates
+  useEffect(() => {
+    if (animatingJobKey) {
+      const t = setTimeout(() => setAnimatingJobKey(null), 1000)
+      return () => clearTimeout(t)
+    }
+  }, [animatingJobKey])
 
   useEffect(() => {
     if (refreshKey > 0) fetchCandidates()
@@ -437,7 +470,7 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
                 return (
                   <tr
                     key={c.profile_key}
-                    className="candidate-row"
+                    className={`candidate-row ${animatingJobKey ? 'anim-row' : ''}`}
                     style={{ ...s.tr(hovered === c.profile_key, selectedProfileKey === c.profile_key, isRejected), '--row-index': i }}
                     onClick={() => onSelectCandidate(c)}
                     onMouseEnter={() => setHovered(c.profile_key)}
@@ -529,7 +562,7 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
                 } catch (e) {
                   console.error('background grade/synthesize failed:', e)
                 } finally {
-                  onProcessingChange(profileKey, null)
+                  onProcessingChange(profileKey, 'Updating profile…')
                 }
               })()
             }

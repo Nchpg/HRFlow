@@ -521,7 +521,7 @@ export default function DocumentsTab({ profileKey, jobKey, onGraded, onProcessin
       await onGraded?.(gradeResult)  // awaited: score update → synthesis → processing cleared
     } catch (e) {
       console.error('grading failed:', e)
-      onProcessingChange?.(profileKey, null)
+      onProcessingChange?.(profileKey, 'Updating profile…')
     }
   }
 
@@ -552,7 +552,7 @@ export default function DocumentsTab({ profileKey, jobKey, onGraded, onProcessin
       await onGraded?.(result)
     } catch (e) {
       console.error('file upload/processing failed:', e)
-      onProcessingChange?.(profileKey, null)
+      onProcessingChange?.(profileKey, 'Updating profile…')
       throw e
     }
   }
