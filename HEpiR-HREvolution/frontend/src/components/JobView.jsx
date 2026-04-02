@@ -178,9 +178,12 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
   const selectedProfileKeyRef = useRef(selectedProfileKey)
   const onCandidateRefreshedRef = useRef(onCandidateRefreshed)
   const currentJobKeyRef = useRef(job?.key)
+  const candidateOverrideRef = useRef(candidateOverride)
+  
   useEffect(() => { selectedProfileKeyRef.current = selectedProfileKey }, [selectedProfileKey])
   useEffect(() => { onCandidateRefreshedRef.current = onCandidateRefreshed }, [onCandidateRefreshed])
   useEffect(() => { currentJobKeyRef.current = job?.key }, [job?.key])
+  useEffect(() => { candidateOverrideRef.current = candidateOverride }, [candidateOverride])
 
   const fetchCandidates = useCallback(async () => {
     if (!job) return
@@ -243,16 +246,17 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
       
       // If we have an active override, apply it to the freshly fetched list
       // This prevents the "flicker" where the list jumps back to stale HRFlow data before indexing finishes
+      const override = candidateOverrideRef.current
       const finalCands = list.map(c => {
-        if (candidateOverride && c.profile_key === candidateOverride.profileKey) {
+        if (override && c.profile_key === override.profileKey) {
           const patch = {}
-          if (candidateOverride.bonus !== undefined) patch.bonus = candidateOverride.bonus
-          if (candidateOverride.stage !== undefined) patch.stage = candidateOverride.stage
-          if (candidateOverride.synthesis !== undefined) patch.synthesis = candidateOverride.synthesis
-          if (candidateOverride.base_score !== undefined) {
-            patch.base_score = candidateOverride.base_score
-            patch.ai_adjustment = candidateOverride.ai_adjustment ?? 0
-            patch.score = candidateOverride.base_score + (candidateOverride.ai_adjustment ?? 0)
+          if (override.bonus !== undefined) patch.bonus = override.bonus
+          if (override.stage !== undefined) patch.stage = override.stage
+          if (override.synthesis !== undefined) patch.synthesis = override.synthesis
+          if (override.base_score !== undefined) {
+            patch.base_score = override.base_score
+            patch.ai_adjustment = override.ai_adjustment ?? 0
+            patch.score = override.base_score + (override.ai_adjustment ?? 0)
           }
           return { ...c, ...patch }
         }
@@ -264,14 +268,14 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
 
       if (selectedProfileKeyRef.current) {
         const updated = finalCands.find((c) => c.profile_key === selectedProfileKeyRef.current)
-        if (updated) onCandidateRefreshedRef.current?.(updated)
+        onCandidateRefreshedRef.current?.(updated || { profile_key: selectedProfileKeyRef.current })
       }
     } catch (e) {
       console.error(e)
     } finally {
       if (currentJobKeyRef.current === fetchedForKey) setLoading(false)
     }
-  }, [job, refreshKey, candidateOverride])
+  }, [job, refreshKey])
 
   useEffect(() => {
     if (job?.key) {

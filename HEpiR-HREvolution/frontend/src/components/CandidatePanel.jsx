@@ -217,10 +217,15 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
       setActiveTab('overview')
     } else {
       // Profile is same, but candidateRef might have been updated (e.g. from synthesis or grading)
-      if (candidateRef.synthesis && candidateRef.synthesis !== synthesis) {
+      if (candidateRef.synthesis && JSON.stringify(candidateRef.synthesis) !== JSON.stringify(synthesis)) {
         setSynthesis(candidateRef.synthesis)
         setLoadingSynth(false)
       }
+    }
+
+    // Clear local loading if we're now in "Updating profile" or finished
+    if (processingStatus && processingStatus !== 'Generating synthesis…' && loadingSynth) {
+      setLoadingSynth(false)
     }
 
     const b = Math.round((candidateRef.bonus || 0) * 100)
@@ -450,26 +455,28 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
             onStageChange={handleStageChange}
           />
 
-          {/* Processing status banner — show if we're generating synthesis or have an external status, even during initial load */}
-          {(loadingSynth || processingStatus) && (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '7px 20px', fontSize: '.8rem', color: 'var(--accent)', background: '#f0f4ff', borderBottom: '1px solid var(--border)', lineHeight: 1 }}>
-              <div className="spinner" style={{ width: 13, height: 13, flexShrink: 0, margin: 0 }} />
-              <span>{(loadingSynth || processingStatus === 'Generating synthesis…') ? 'Generating synthesis…' : (processingStatus || 'Loading…')}</span>
-            </div>
-          )}
-
-          {/* Tabs — keyed to candidateRef so animation replays per profile */}
-          <div key={candidateRef?.profile_key + '-tabs'} style={s.tabs}>
-            {['overview', 'synthesis', 'scoring', 'documents', 'resume', 'email', 'ask'].map((tab, i) => (
-              <div
-                key={tab}
-                className="anim-tab"
-                style={{ ...s.tab(activeTab === tab), '--tab-index': i }}
-                onClick={() => setActiveTab(tab)}
-              >
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+          {/* Processing and Tabs area — reserved space for banner to avoid flicker */}
+          <div style={{ position: 'relative' }}>
+            {((loadingSynth && !synthesis) || processingStatus) && (
+              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 33, zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '0 20px', fontSize: '.8rem', color: 'var(--accent)', background: '#f0f4ff', borderBottom: '1px solid var(--border)', lineHeight: 1 }}>
+                <div className="spinner" style={{ width: 13, height: 13, flexShrink: 0, margin: 0 }} />
+                <span>{((loadingSynth && !synthesis) || processingStatus === 'Generating synthesis…') ? 'Generating synthesis…' : (processingStatus || 'Loading…')}</span>
               </div>
-            ))}
+            )}
+
+            {/* Tabs — keyed to candidateRef so animation replays per profile */}
+            <div key={candidateRef?.profile_key + '-tabs'} style={{ ...s.tabs, paddingTop: ((loadingSynth && !synthesis) || processingStatus) ? 33 : 0 }}>
+              {['overview', 'synthesis', 'scoring', 'documents', 'resume', 'email', 'ask'].map((tab, i) => (
+                <div
+                  key={tab}
+                  className="anim-tab"
+                  style={{ ...s.tab(activeTab === tab), '--tab-index': i }}
+                  onClick={() => setActiveTab(tab)}
+                >
+                  {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                </div>
+              ))}
+            </div>
           </div>
 
           {/* Body */}

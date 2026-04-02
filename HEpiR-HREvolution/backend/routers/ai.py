@@ -140,11 +140,30 @@ async def synthesize_candidate(req: SynthesizeRequest):
         final_score = json.loads(raw_tag).get("score", 0.5) if raw_tag else 0.5
         extra_docs = hrflow.get_extra_documents(profile, req.job_key)
 
-        synthesis = await llm.synthesize_candidate(
-            job, profile, tracking or {}, upskilling, final_score, extra_docs
-        )
-        await _patch_tag(req.profile_key, profile, f"synthesis_{req.job_key}", json.dumps(synthesis))
-        return synthesis
+        synthesis = None
+        last_err = None
+        for attempt in range(2):
+            try:
+                synthesis = await llm.synthesize_candidate(
+                    job, profile, tracking or {}, upskilling, final_score, extra_docs
+                )
+                if synthesis and isinstance(synthesis, dict) and synthesis.get("summary"):
+                    break
+            except Exception as e:
+                last_err = e
+                print(f"[synthesize] attempt {attempt+1} failed: {e}", flush=True)
+
+        if synthesis and isinstance(synthesis, dict) and synthesis.get("summary"):
+            await _patch_tag(req.profile_key, profile, f"synthesis_{req.job_key}", json.dumps(synthesis))
+            return synthesis
+        
+        # Fallback to existing synthesis if generation failed
+        existing_synth_raw = hrflow.extract_tag(profile, f"synthesis_{req.job_key}")
+        if existing_synth_raw:
+            print("[synthesize] generation failed, falling back to existing synthesis", flush=True)
+            return json.loads(existing_synth_raw)
+            
+        raise last_err or Exception("Synthesis generation failed and no existing synthesis found")
     except Exception as e:
         print(f"synthesize error: {e}", flush=True)
         raise HTTPException(status_code=502, detail=str(e))

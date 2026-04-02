@@ -139,6 +139,9 @@ SYNTHESIS_SYSTEM = """You are an expert HR analyst. Given a job, a candidate pro
 application data, extra documents (like interview transcripts or technical tests), and scoring analysis,
 write a concise structured recruitment summary.
 
+If some input data is missing (e.g. empty job summary or empty candidate skills), do NOT output "Missing inputs" or LaTeX.
+Instead, use the available information (like the job title and candidate experiences) to provide the best possible analysis.
+
 Critical Instruction on Contradictions:
 - Compare the candidate's claims (from CV/profile) with evidence from extra documents.
 - If an extra document (e.g., an interview) reveals a weakness or lack of skill that contradicts a claim in the CV,
@@ -178,9 +181,9 @@ async def synthesize_candidate(
     user_content = json.dumps(
         {
             "final_score": final_score,
-            "job_title": job.get("name", ""),
-            "job_summary": job.get("summary", ""),
-            "job_skills": [_skill_name(s) for s in job.get("skills", [])],
+            "job_title": job.get("name") or job.get("key", ""),
+            "job_summary": job.get("summary") or "No summary provided.",
+            "job_skills": [_skill_name(s) for s in job.get("skills", [])] or ["Not specified"],
             "candidate_name": f"{profile.get('info', {}).get('first_name', '')} {profile.get('info', {}).get('last_name', '')}",
             "candidate_skills": [_skill_name(s) for s in profile.get("skills", [])],
             "candidate_experiences": [
@@ -205,9 +208,16 @@ async def synthesize_candidate(
     )
     raw = await _chat(SYNTHESIS_SYSTEM, user_content)
     try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        return {"summary": raw, "strengths": [], "weaknesses": [], "upskilling": []}
+        data = json.loads(raw)
+        # Ensure it's a dict and has summary
+        if isinstance(data, dict) and data.get("summary"):
+            return data
+        raise ValueError("Invalid synthesis format")
+    except (json.JSONDecodeError, ValueError):
+        print(f"[llm.synthesize_candidate] Failed to parse JSON. Raw output: {raw}", flush=True)
+        # Strip potential boxed/latex if it leaked into the fallback
+        clean_summary = raw.replace("\\boxed{", "").replace("\\text{", "").replace("}", "")
+        return {"summary": clean_summary, "strengths": [], "weaknesses": [], "upskilling": []}
 
 
 # ---------------------------------------------------------------------------

@@ -49,7 +49,20 @@ export default function DashboardPage() {
       status ? { ...prev, [profileKey]: status } : Object.fromEntries(Object.entries(prev).filter(([k]) => k !== profileKey))
     )
     // Trigger a list refresh when entering "Updating profile…" — this is when we expect HRFlow to have indexed
-    if (status === 'Updating profile…') setCandidateRefreshKey((k) => k + 1)
+    if (status === 'Updating profile…') {
+      setCandidateRefreshKey((k) => k + 1)
+      // Safety timeout: clear "Updating profile…" after 8s if indexing/refresh is slow
+      setTimeout(() => {
+        setProcessingProfiles(prev => {
+          if (prev[profileKey] === 'Updating profile…') {
+            const next = { ...prev }
+            delete next[profileKey]
+            return next
+          }
+          return prev
+        })
+      }, 8000)
+    }
   }
 
   async function fetchJobs() {
@@ -177,11 +190,17 @@ export default function DashboardPage() {
         candidateOverride={candidateOverride}
         selectedProfileKey={selectedCandidate?.profile_key}
         onCandidateRefreshed={(c) => {
-          setSelectedCandidate(c)
+          if (c.last_name || c.first_name) setSelectedCandidate(c)
           // Clear any lingering "Updating profile…" banner now that the refresh is done
-          setProcessingProfiles(prev =>
-            Object.fromEntries(Object.entries(prev).filter(([k]) => k !== c.profile_key))
-          )
+          const pk = c.profile_key
+          if (pk) {
+            setProcessingProfiles(prev => {
+              if (!prev[pk]) return prev
+              const next = { ...prev }
+              delete next[pk]
+              return next
+            })
+          }
         }}
         onProcessingChange={setProcessing}
         onJobStatusChange={handleJobStatusChange}
