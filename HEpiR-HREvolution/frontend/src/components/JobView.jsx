@@ -160,6 +160,33 @@ const s = {
   }),
 }
 
+const STATUS_LABELS = {
+  open: 'Ouvert',
+  on_hold: 'En pause',
+  closed: 'Fermé',
+}
+
+const STAGE_TRANSLATIONS = {
+  applied: 'Candidature',
+  interview: 'Entretien',
+  screening: 'Présélection',
+  technical_test: 'Test technique',
+  offer: 'Offre envoyée',
+  hired: 'Recruté',
+  rejected: 'Rejeté',
+}
+
+function translateStage(stage, labels = {}) {
+  if (!stage) return 'Inconnu'
+  // 1. Local translations (builtin stages)
+  if (STAGE_TRANSLATIONS[stage]) return STAGE_TRANSLATIONS[stage]
+  // 2. Server labels (custom stages)
+  if (labels[stage]) return labels[stage]
+  // 3. Fallback
+  if (stage.startsWith('custom_')) return stage.slice(7).replace(/_/g, ' ')
+  return stage.replace(/_/g, ' ')
+}
+
 export default function JobView({ job, onSelectCandidate, processingProfiles = {}, refreshKey = 0, selectedProfileKey, onCandidateRefreshed, onProcessingChange, onJobStatusChange, candidateOverride, onScoreReady, onSynthesisReady }) {
   const [candidates, setCandidates] = useState([])
   const [loading, setLoading] = useState(false)
@@ -382,8 +409,8 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
     return (
       <div style={{ ...s.root, justifyContent: 'center', alignItems: 'center' }}>
         <div style={s.empty}>
-          <div style={{ fontWeight: 600, marginBottom: 4 }}>Select a job</div>
-          <div style={{ fontSize: '.8125rem' }}>Pick a job from the sidebar to view candidates</div>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>Sélectionnez un poste</div>
+          <div style={{ fontSize: '.8125rem' }}>Choisissez un poste dans la barre latérale pour voir les candidats</div>
         </div>
       </div>
     )
@@ -393,19 +420,19 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
     <div style={s.root}>
       <div style={s.header}>
         <div style={{ ...s.title, flex: 'none' }}>{job.name || job.key}</div>
-        <div style={{ ...s.statusBadge(localStatus), marginLeft: 16 }} title={`Job is currently ${localStatus.replace('_', ' ')}`}>
-          {localStatus.replace('_', ' ')}
+        <div style={{ ...s.statusBadge(localStatus), marginLeft: 16 }} title={`Le poste est actuellement ${STATUS_LABELS[localStatus] || localStatus}`}>
+          {STATUS_LABELS[localStatus] || localStatus}
         </div>
         <div style={{ flex: 1 }} />
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <button className="btn-secondary" onClick={() => setShowJobInfo(true)} title="View job details">
-            Info
+          <button className="btn-secondary" onClick={() => setShowJobInfo(true)} title="Voir les détails du poste">
+            Infos
           </button>
           <button className="btn-secondary" onClick={() => setShowStageManager(true)}>
-            Pipeline
+            Processus
           </button>
           <button className="btn-primary" onClick={() => setShowUpload(true)} disabled={loading}>
-            Add candidate
+            Ajouter un candidat
           </button>
         </div>
       </div>
@@ -415,7 +442,7 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
           <span style={s.searchIcon}>⌕</span>
           <input
             style={s.searchInput}
-            placeholder="Search candidates…"
+            placeholder="Rechercher des candidats…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -428,7 +455,7 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
         >
           {allStages.map((st) => (
             <option key={st} value={st}>
-              {st === 'all' ? 'All stages' : (stageLabels[st] || st.replace(/_/g, ' '))}
+              {st === 'all' ? 'Toutes les étapes' : translateStage(st, stageLabels)}
             </option>
           ))}
         </select>
@@ -436,13 +463,13 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
         <button
           className="btn-ghost"
           onClick={() => setSortBy(s => s === 'score' ? 'status' : 'score')}
-          title={sortBy === 'score' ? 'Sort by stage' : 'Sort by score'}
+          title={sortBy === 'score' ? 'Trier par étape' : 'Trier par score'}
         >
-          {sortBy === 'score' ? 'Score' : 'Stage'}
+          {sortBy === 'score' ? 'Score' : 'Étape'}
         </button>
 
         <div style={{ fontSize: '.8rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
-          {filtered.length} candidate{filtered.length !== 1 ? 's' : ''}
+          {filtered.length} candidat{filtered.length !== 1 ? 's' : ''}
         </div>
       </div>
 
@@ -452,14 +479,14 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
             <div className="spinner" />
           </div>
         ) : (candidates.length === 0) ? (
-          <div style={s.empty}>No candidates found</div>
+          <div style={s.empty}>Aucun candidat trouvé</div>
         ) : (
           <table style={s.table}>
             <thead>
               <tr>
                 <th style={{ ...s.th, width: '5%' }}>#</th>
-                <th style={{ ...s.th, width: '38%' }}>Candidate</th>
-                <th style={{ ...s.th, width: '27%' }}>Stage</th>
+                <th style={{ ...s.th, width: '38%' }}>Candidat</th>
+                <th style={{ ...s.th, width: '27%' }}>Étape</th>
                 <th style={{ ...s.th, width: '16%', textAlign: 'center' }}>Score</th>
                 <th style={{ ...s.th, width: '14%', textAlign: 'center' }}>Bonus</th>
               </tr>
@@ -509,7 +536,7 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
                         textTransform: 'capitalize',
                         fontWeight: 500
                       }}>
-                        {stageLabels[c.stage] || (c.stage?.startsWith('custom_') ? c.stage.slice(7).replace(/_/g, ' ') : c.stage?.replace(/_/g, ' '))}
+                        {translateStage(c.stage, stageLabels)}
                       </span>
                     </td>
                     <td style={{ ...s.td, textAlign: 'center' }}>
@@ -544,7 +571,7 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
             fetchCandidates()
             if (data?.profile_key && onProcessingChange) {
               const profileKey = data.profile_key
-              onProcessingChange(profileKey, 'Grading…')
+              onProcessingChange(profileKey, 'Évaluation…')
               ;(async () => {
                 try {
                   const gradeResult = await gradeCandidate(job.key, profileKey)
@@ -557,7 +584,7 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
                     })
                   }
                   
-                  onProcessingChange(profileKey, 'Generating synthesis…')
+                  onProcessingChange(profileKey, 'Génération de la synthèse…')
                   const synth = await synthesizeCandidate(job.key, profileKey)
                   
                   if (selectedProfileKeyRef.current === profileKey && synth) {
@@ -566,7 +593,7 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
                 } catch (e) {
                   console.error('background grade/synthesize failed:', e)
                 } finally {
-                  onProcessingChange(profileKey, 'Updating profile…')
+                  onProcessingChange(profileKey, 'Mise à jour du profil…')
                 }
               })()
             }

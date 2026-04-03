@@ -99,6 +99,21 @@ const s = {
   })
 }
 
+const STAGE_TRANSLATIONS = {
+  applied: 'Candidature',
+  interview: 'Entretien',
+  screening: 'Présélection',
+  technical_test: 'Test technique',
+  offer: 'Offre envoyée',
+  hired: 'Recruté',
+  rejected: 'Rejeté',
+}
+
+function translateStage(stage, label) {
+  if (STAGE_TRANSLATIONS[stage]) return STAGE_TRANSLATIONS[stage]
+  return label || stage
+}
+
 export default function StageManager({ job, onClose, onStatusChange }) {
   const [closing, setClosing] = useState(false)
 
@@ -155,7 +170,7 @@ export default function StageManager({ job, onClose, onStatusChange }) {
 
   const handleDelete = async (key) => {
     if (deletingKeys.includes(key)) return
-    if (!window.confirm('Are you sure you want to delete this stage?')) return
+    if (!window.confirm('Êtes-vous sûr de vouloir supprimer cette étape ?')) return
     
     setDeletingKeys(prev => [...prev, key])
     try {
@@ -224,18 +239,24 @@ export default function StageManager({ job, onClose, onStatusChange }) {
     </svg>
   )
 
+  const STATUS_LABELS = {
+    open: 'Ouvert',
+    on_hold: 'En pause',
+    closed: 'Fermé',
+  }
+
   return (
     <div style={s.overlay} className={closing ? 'anim-overlay-exit' : 'anim-overlay'} onClick={handleClose}>
       <div style={s.modal} className={closing ? 'anim-modal-exit' : 'anim-modal'} onClick={e => e.stopPropagation()}>
         <div style={s.header}>
-          <div style={s.title}>Pipeline Settings — {job.name}</div>
+          <div style={s.title}>Paramètres du processus — {job.name}</div>
           <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem' }} onClick={handleClose}>✕</button>
         </div>
         
         <div style={s.body}>
           <div style={s.section}>
             <div style={s.sectionTitle}>
-              Job Operational Status
+              Statut opérationnel du poste
               {statusUpdating && <div className="spinner" style={{ width: 12, height: 12, margin: 0 }} />}
             </div>
             <div style={{ display: 'flex', gap: 10, width: '100%' }}>
@@ -245,15 +266,15 @@ export default function StageManager({ job, onClose, onStatusChange }) {
                   style={s.statusOption(jobStatus === status)} 
                   onClick={() => handleStatusUpdate(status)}
                 >
-                  {status.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                  {STATUS_LABELS[status]}
                 </div>
               ))}
             </div>
           </div>
 
-          <div style={s.sectionTitle}>Recruitment Pipeline</div>
+          <div style={s.sectionTitle}>Processus de recrutement</div>
           <div style={{ fontSize: '.8rem', color: 'var(--text-muted)', marginBottom: 15 }}>
-            Customize the stages between <b>Applied</b> and <b>Hired</b>.
+            Personnalisez les étapes entre <b>Candidature</b> et <b>Embauche</b>.
           </div>
 
           {loading ? (
@@ -269,8 +290,8 @@ export default function StageManager({ job, onClose, onStatusChange }) {
                   <div key={stage.key} style={s.stageItem}>
                     <div style={s.badge(getHexColor(stage.color))} />
                     <div style={{ flex: 1, fontSize: '.9rem', fontWeight: stage.builtin ? 600 : 400 }}>
-                      {stage.label}
-                      {stage.builtin && <span style={{ marginLeft: 8, fontSize: '.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Locked</span>}
+                      {translateStage(stage.key, stage.label)}
+                      {stage.builtin && <span style={{ marginLeft: 8, fontSize: '.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Verrouillé</span>}
                     </div>
                     
                     {isCustom && (
@@ -278,19 +299,19 @@ export default function StageManager({ job, onClose, onStatusChange }) {
                         <button 
                           style={s.reorderBtn(!canMoveUp)} 
                           onClick={() => canMoveUp && moveStage(i, -1)} 
-                          title="Move up"
+                          title="Monter"
                           disabled={!canMoveUp}
                         >↑</button>
                         <button 
                           style={s.reorderBtn(!canMoveDown)} 
                           onClick={() => canMoveDown && moveStage(i, 1)} 
-                          title="Move down"
+                          title="Descendre"
                           disabled={!canMoveDown}
                         >↓</button>
                         <button 
                           style={s.deleteBtn(deletingKeys.includes(stage.key))}
                           onClick={() => handleDelete(stage.key)}
-                          title="Delete stage"
+                          title="Supprimer l'étape"
                           disabled={deletingKeys.includes(stage.key)}
                         >
                           <TrashIcon />
@@ -303,17 +324,17 @@ export default function StageManager({ job, onClose, onStatusChange }) {
 
               {presets.length > 0 && (
                 <div style={{ marginTop: 20 }}>
-                  <div style={{ fontSize: '.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase' }}>Quick Add Presets</div>
+                  <div style={{ fontSize: '.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase' }}>Modèles d'ajout rapide</div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                     {presets.filter(p => !stages.some(s => s.key === p.key)).map(p => (
                       <button 
                         key={p.key} 
                         className="btn-secondary" 
                         style={{ padding: '4px 10px', fontSize: '.75rem' }}
-                        onClick={() => handleCreate(p.label, p.color)}
+                        onClick={() => handleCreate(translateStage(p.key, p.label), p.color)}
                         disabled={submitting}
                       >
-                        + {p.label}
+                        + {translateStage(p.key, p.label)}
                       </button>
                     ))}
                   </div>
@@ -321,10 +342,10 @@ export default function StageManager({ job, onClose, onStatusChange }) {
               )}
 
               <form style={s.form} onSubmit={(e) => { e.preventDefault(); handleCreate(newLabel, newColor); }}>
-                <div style={{ fontSize: '.85rem', fontWeight: 600, marginBottom: 10 }}>Add New Stage</div>
+                <div style={{ fontSize: '.85rem', fontWeight: 600, marginBottom: 10 }}>Ajouter une étape</div>
                 <input 
                   style={s.input} 
-                  placeholder="Stage Name..." 
+                  placeholder="Nom de l'étape..." 
                   value={newLabel}
                   onChange={e => setNewLabel(e.target.value)}
                   maxLength={40}
@@ -345,7 +366,7 @@ export default function StageManager({ job, onClose, onStatusChange }) {
                   style={{ width: '100%' }} 
                   disabled={submitting || !newLabel.trim()}
                 >
-                  {submitting ? 'Adding...' : 'Add Stage'}
+                  {submitting ? 'Ajout...' : 'Ajouter l\'étape'}
                 </button>
               </form>
             </div>
@@ -353,7 +374,7 @@ export default function StageManager({ job, onClose, onStatusChange }) {
         </div>
 
         <div style={s.footer}>
-          <button className="btn-secondary" onClick={handleClose}>Close</button>
+          <button className="btn-secondary" onClick={handleClose}>Fermer</button>
         </div>
       </div>
     </div>

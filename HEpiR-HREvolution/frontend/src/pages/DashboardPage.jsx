@@ -49,12 +49,12 @@ export default function DashboardPage() {
       status ? { ...prev, [profileKey]: status } : Object.fromEntries(Object.entries(prev).filter(([k]) => k !== profileKey))
     )
     // Trigger a list refresh when entering "Updating profile…" — this is when we expect HRFlow to have indexed
-    if (status === 'Updating profile…') {
+    if (status === 'Mise à jour du profil…') {
       setCandidateRefreshKey((k) => k + 1)
-      // Safety timeout: clear "Updating profile…" after 8s if indexing/refresh is slow
+      // Safety timeout: clear "Mise à jour du profil…" after 8s if indexing/refresh is slow
       setTimeout(() => {
         setProcessingProfiles(prev => {
-          if (prev[profileKey] === 'Updating profile…') {
+          if (prev[profileKey] === 'Mise à jour du profil…') {
             const next = { ...prev }
             delete next[profileKey]
             return next
@@ -148,7 +148,7 @@ export default function DashboardPage() {
       setCandidateRefreshKey(k => k + 1)
     } catch (e) {
       console.error(e)
-      setFetchError('Failed to load jobs. Check your network connection.')
+      setFetchError('Échec du chargement des postes. Vérifiez votre connexion réseau.')
     } finally {
       setLoadingJobs(false)
     }
@@ -195,7 +195,7 @@ export default function DashboardPage() {
         const pk = c.profile_key
         if (pk) {
           setProcessingProfiles(prev => {
-            if (prev[pk] === 'Updating profile…') { // <--- CORRECTION ICI
+            if (prev[pk] === 'Mise à jour du profil…') { // <--- CORRECTION ICI
               const next = { ...prev }
               delete next[pk]
               return next

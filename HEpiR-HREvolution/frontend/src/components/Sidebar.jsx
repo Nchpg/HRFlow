@@ -160,7 +160,7 @@ export default function Sidebar({ jobs, selectedJobKey, onSelectJob, loading, on
           <span style={s.searchIcon}>⌕</span>
           <input
             style={s.searchInput}
-            placeholder="Search jobs…"
+            placeholder="Rechercher des postes…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -168,13 +168,13 @@ export default function Sidebar({ jobs, selectedJobKey, onSelectJob, loading, on
 
         {/* Jobs section */}
         <div style={s.sectionRow}>
-          <span style={s.sectionLabel} className="anim-section-label">Jobs</span>
+          <span style={s.sectionLabel} className="anim-section-label">Postes</span>
         </div>
 
         <div style={s.list}>
-          {loading && <div style={{ color: 'var(--sidebar-muted)', fontSize: '.8rem', padding: '6px 10px' }}>Loading…</div>}
+          {loading && <div style={{ color: 'var(--sidebar-muted)', fontSize: '.8rem', padding: '6px 10px' }}>Chargement…</div>}
           {!loading && filtered.length === 0 && (
-            <div style={{ color: 'var(--sidebar-muted)', fontSize: '.8rem', padding: '6px 10px' }}>No jobs found</div>
+            <div style={{ color: 'var(--sidebar-muted)', fontSize: '.8rem', padding: '6px 10px' }}>Aucun poste trouvé</div>
           )}
           {filtered.map((job) => {
             const statusColors = {
@@ -213,13 +213,13 @@ export default function Sidebar({ jobs, selectedJobKey, onSelectJob, loading, on
             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-hover)' }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--accent)' }}
           >
-            <span>+ New job</span>
+            <span>+ Nouveau poste</span>
           </div>
         </div>
 
         <div style={s.footer}>
-          <div style={s.avatar}>HR</div>
-          <span>HR Manager</span>
+          <div style={s.avatar}>RH</div>
+          <span>Responsable RH</span>
         </div>
       </aside>
 

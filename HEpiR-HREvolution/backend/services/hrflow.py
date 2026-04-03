@@ -470,17 +470,17 @@ def build_job_tag(job_key: str, score: float, bonus: float = 0.0, base_score: fl
 # ---------------------------------------------------------------------------
 
 MANDATORY_STAGES = [
-    {"key": "applied", "label": "Applied", "color": "gray", "order": 0, "builtin": True},
-    {"key": "hired", "label": "Hired", "color": "green", "order": 999, "builtin": True},
-    {"key": "rejected", "label": "Rejected", "color": "red", "order": 1000, "builtin": True},
+    {"key": "applied", "label": "Candidature", "color": "gray", "order": 0, "builtin": True},
+    {"key": "hired", "label": "Recruté", "color": "green", "order": 999, "builtin": True},
+    {"key": "rejected", "label": "Rejeté", "color": "red", "order": 1000, "builtin": True},
 ]
 
 # Presets that HR can add easily
 PRESET_STAGES = [
-    {"key": "screening", "label": "Screening", "color": "blue"},
-    {"key": "interview", "label": "Interview", "color": "indigo"},
-    {"key": "technical_test", "label": "Technical Test", "color": "purple"},
-    {"key": "offer", "label": "Offer Sent", "color": "orange"},
+    {"key": "screening", "label": "Présélection", "color": "blue"},
+    {"key": "interview", "label": "Entretien", "color": "indigo"},
+    {"key": "technical_test", "label": "Test technique", "color": "purple"},
+    {"key": "offer", "label": "Offre envoyée", "color": "orange"},
 ]
 
 async def get_job_stages(job_key: str) -> list[dict]:

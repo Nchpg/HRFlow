@@ -172,6 +172,28 @@ const s = {
   },
 }
 
+const STAGE_TRANSLATIONS = {
+  applied: 'Candidature',
+  interview: 'Entretien',
+  screening: 'Présélection',
+  technical_test: 'Test technique',
+  offer: 'Offre envoyée',
+  hired: 'Recruté',
+  rejected: 'Rejeté',
+}
+
+function translateStage(stage, labels = []) {
+  if (!stage) return 'Inconnu'
+  // 1. Check local manual translations first (builtin stages)
+  if (STAGE_TRANSLATIONS[stage]) return STAGE_TRANSLATIONS[stage]
+  // 2. Then check the labels from the server (for custom stages)
+  const found = labels.find(s => s.key === stage)
+  if (found) return found.label
+  // 3. Fallback for custom keys without labels
+  if (stage.startsWith('custom_')) return stage.slice(7).replace(/_/g, ' ')
+  return stage.replace(/_/g, ' ')
+}
+
 export default function CandidatePanel({ candidateRef, job, onClose, onProcessingChange, onScoreReady, onSynthesisReady, processingStatus, onBonusSaved, onStageChange }) {
   const [closing, setClosing] = useState(false)
 
@@ -261,12 +283,12 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
         } else if (scoreTag) {
           // Already graded but synthesis missing. 
           // Check if synthesis is already in flight (from another panel session)
-          if (processingStatus === 'Generating synthesis…') {
+          if (processingStatus === 'Génération de la synthèse…') {
             setLoadingSynth(true)
             return
           }
 
-          onProcessingChange?.(candidateRef.profile_key, 'Generating synthesis…')
+          onProcessingChange?.(candidateRef.profile_key, 'Génération de la synthèse…')
           setLoadingSynth(true)
           try {
             const generated = await synthesizeCandidate(job.key, candidateRef.profile_key)
@@ -278,7 +300,7 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
             console.error(e)
           } finally {
             setLoadingSynth(false)
-            onProcessingChange?.(candidateRef.profile_key, 'Updating profile…')
+            onProcessingChange?.(candidateRef.profile_key, 'Mise à jour du profil…')
           }
         } else {
           // Not yet graded: synthesis will be generated via onGraded after the first grade run
@@ -386,7 +408,7 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
               <div style={{ marginTop: 6, display: 'flex', gap: 8, alignItems: 'center' }}>
                 <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span className={`score-badge ${scoreBadgeClass(totalScore)}`}>
-                    {totalScore !== null ? `${Math.round(totalScore * 100)}%` : 'Not scored'}
+                    {totalScore !== null ? `${Math.round(totalScore * 100)}%` : 'Non évalué'}
                   </span>
                 </div>
 
@@ -397,7 +419,7 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
                     onClick={() => navIdx > 0 && handleStageChange(navStages[navIdx - 1].key)}
                   >‹</button>
                   <span style={{ fontSize: '.8rem', fontWeight: 500, color: currentStage === 'rejected' ? '#ef4444' : 'var(--text)', minWidth: 72, textAlign: 'center' }}>
-                    {navStages[navIdx]?.label || stages[currentStageIdx]?.label || 'Unknown'}
+                    {translateStage(currentStage, stages)}
                   </span>
                   <button
                     style={{ ...s.stageArrow, opacity: (navIdx >= navStages.length - 1 || currentStage === 'rejected') ? 0.35 : 1 }}
@@ -406,7 +428,7 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
                   >›</button>
                   <div style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 2px' }} />
                   <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
-                    <span style={{ fontSize: '.7rem', color: currentStage === 'rejected' ? '#ef4444' : 'var(--text-muted)' }}>Reject</span>
+                    <span style={{ fontSize: '.7rem', color: currentStage === 'rejected' ? '#ef4444' : 'var(--text-muted)' }}>Rejeter</span>
                     <span
                       role="switch"
                       aria-checked={currentStage === 'rejected'}
@@ -460,7 +482,7 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
             {((loadingSynth && !synthesis) || processingStatus) && (
               <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 33, zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '0 20px', fontSize: '.8rem', color: 'var(--accent)', background: '#f0f4ff', borderBottom: '1px solid var(--border)', lineHeight: 1 }}>
                 <div className="spinner" style={{ width: 13, height: 13, flexShrink: 0, margin: 0 }} />
-                <span>{((loadingSynth && !synthesis) || processingStatus === 'Generating synthesis…') ? 'Generating synthesis…' : (processingStatus || 'Loading…')}</span>
+                <span>{((loadingSynth && !synthesis) || processingStatus === 'Generating synthesis…') ? 'Génération de la synthèse…' : (processingStatus === 'Updating profile…' ? 'Mise à jour du profil…' : (processingStatus || 'Chargement…'))}</span>
               </div>
             )}
 
@@ -473,8 +495,13 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
                   style={{ ...s.tab(activeTab === tab), '--tab-index': i }}
                   onClick={() => setActiveTab(tab)}
                 >
-                  {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                </div>
+                  {tab === 'overview' ? 'Aperçu' :
+                   tab === 'synthesis' ? 'Synthèse' :
+                   tab === 'scoring' ? 'Évaluation' :
+                   tab === 'documents' ? 'Documents' :
+                   tab === 'resume' ? 'CV' :
+                   tab === 'email' ? 'E-mail' :
+                   tab === 'ask' ? 'Questions' : tab}                </div>
               ))}
             </div>
           </div>
@@ -491,7 +518,7 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
                   setLocalScores({ base_score: result.base_score ?? null, ai_adjustment: result.ai_adjustment ?? 0 })
                   onScoreReady?.({ base_score: result.base_score ?? null, ai_adjustment: result.ai_adjustment ?? 0 })
                   setDocsRefreshKey(k => k + 1)
-                  onProcessingChange?.(candidateRef.profile_key, 'Generating synthesis…')
+                  onProcessingChange?.(candidateRef.profile_key, 'Génération de la synthèse…')
                   setLoadingSynth(true)
                   try {
                     const synth = await synthesizeCandidate(job.key, candidateRef.profile_key)
@@ -503,7 +530,7 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
                     console.error('synthesis failed:', e)
                   } finally {
                     setLoadingSynth(false)
-                    onProcessingChange?.(candidateRef.profile_key, 'Updating profile…')
+                    onProcessingChange?.(candidateRef.profile_key, 'Mise à jour du profil…')
                   }
                 }}
                 onProcessingChange={onProcessingChange}
@@ -673,7 +700,7 @@ function PipelineProgress({ stages, currentIdx, onStageChange }) {
                       letterSpacing: isActive ? '.01em' : '0',
                       transition: 'color 300ms ease',
                     }}>
-                      {stage.label}
+                      {translateStage(stage.key, stages)}
                     </div>
                   </div>
                 )
@@ -693,9 +720,9 @@ function OverviewTab({ profile }) {
   return (
     <>
       <div className="anim-item" style={{ marginBottom: 20, '--item-index': 0 }}>
-        <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 8 }}>Skills</div>
+        <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 8 }}>Compétences</div>
         {skills.length === 0 ? (
-          <div style={{ color: 'var(--text-muted)', fontSize: '.8rem' }}>No skills found</div>
+          <div style={{ color: 'var(--text-muted)', fontSize: '.8rem' }}>Aucune compétence trouvée</div>
         ) : (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {skills.map((sk, i) => (
@@ -709,7 +736,7 @@ function OverviewTab({ profile }) {
 
       {experiences.length > 0 && (
         <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 8 }}>Experience</div>
+          <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 8 }}>Expérience</div>
           {experiences.map((exp, i) => (
             <div key={i} className="anim-item" style={{ padding: '10px 14px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', marginBottom: 8, '--item-index': i + 1 }}>
               <div style={{ fontWeight: 600, fontSize: '.875rem' }}>{exp.title}</div>
@@ -722,7 +749,7 @@ function OverviewTab({ profile }) {
 
       {educations.length > 0 && (
         <div>
-          <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 8 }}>Education</div>
+          <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 8 }}>Formation</div>
           {educations.map((edu, i) => (
             <div key={i} className="anim-item" style={{ padding: '10px 14px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', marginBottom: 8, '--item-index': experiences.length + i + 1 }}>
               <div style={{ fontWeight: 600, fontSize: '.875rem' }}>{edu.title}</div>
@@ -739,14 +766,14 @@ function SynthesisTab({ synthesis, loading }) {
   if (loading) return <div style={{ textAlign: 'center', padding: 40 }}><div className="spinner" /></div>
   if (!synthesis) return (
     <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 40 }}>
-      AI synthesis will appear here once generated.
+      La synthèse IA apparaîtra ici une fois générée.
     </div>
   )
   return (
     <>
       {synthesis.summary && (
         <div className="anim-item" style={{ marginBottom: 20, '--item-index': 0 }}>
-          <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 8 }}>Summary</div>
+          <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 8 }}>Résumé</div>
           <div style={{ lineHeight: 1.6, color: 'var(--text)', padding: '12px 14px', background: 'var(--bg)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
             {synthesis.summary}
           </div>
@@ -754,13 +781,13 @@ function SynthesisTab({ synthesis, loading }) {
       )}
 
       <div className="anim-item" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 20, '--item-index': 1 }}>
-        <ChipSection title="Strengths" items={synthesis.strengths} color="#d4edda" />
-        <ChipSection title="Weaknesses" items={synthesis.weaknesses} color="#f8d7da" />
+        <ChipSection title="Points forts" items={synthesis.strengths} color="#d4edda" />
+        <ChipSection title="Points faibles" items={synthesis.weaknesses} color="#f8d7da" />
       </div>
 
       {synthesis.upskilling?.length > 0 && (
         <div className="anim-item" style={{ '--item-index': 2 }}>
-          <ChipSection title="Upskilling recommendations" items={synthesis.upskilling} color="#fff3cd" />
+          <ChipSection title="Recommandations de montée en compétences" items={synthesis.upskilling} color="#fff3cd" />
         </div>
       )}
     </>
@@ -786,7 +813,7 @@ function ChipSection({ title, items = [], color }) {
 function formatShortDate(iso) {
   if (!iso) return ''
   const d = new Date(iso)
-  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
 }
 
 // ---------------------------------------------------------------------------
@@ -826,7 +853,7 @@ function ScoreEvolutionGraph({ profileKey, jobKey, baseScore, savedBonus, refres
       label: 'Base',
       date: null,
       delta: null,
-      fullLabel: 'Base score',
+      fullLabel: 'Score de base',
     })
     let runningAdj = 0
     for (const doc of scoredDocs) {
@@ -879,7 +906,7 @@ function ScoreEvolutionGraph({ profileKey, jobKey, baseScore, savedBonus, refres
   if (points.length === 0) {
     return (
       <div style={{ textAlign: 'center', padding: '32px 0', fontSize: '.875rem', color: 'var(--text-muted)' }}>
-        Grade the candidate to see score evolution.
+        Évaluez le candidat pour voir l'évolution du score.
       </div>
     )
   }
@@ -949,8 +976,7 @@ function ScoreEvolutionGraph({ profileKey, jobKey, baseScore, savedBonus, refres
               overflow: 'visible',
               flexShrink: 0
             }}
-            aria-label="Score evolution over time"
-          >
+            aria-label="Évolution du score au fil du temps"          >
           {/* Y-axis reference lines at 0 / 50% / 100% across the whole width */}
           {[0, 0.5, 1].map(v => (
             <line
@@ -1005,7 +1031,7 @@ function ScoreEvolutionGraph({ profileKey, jobKey, baseScore, savedBonus, refres
 
             return (
               <g key={i} className="pipeline-node" style={{ '--node-index': i }}>
-                <title>{isBase ? `Base score: ${pct}%` : `${p.fullLabel} (${formatShortDate(p.date)}): ${pct}% (${deltaPct >= 0 ? '+' : ''}${deltaPct}%)`}</title>
+                <title>{isBase ? `Score de base : ${pct}%` : `${p.fullLabel} (${formatShortDate(p.date)}) : ${pct}% (${deltaPct >= 0 ? '+' : ''}${deltaPct}%)`}</title>
 
                 {/* Score label above node */}
                 <text
@@ -1067,13 +1093,13 @@ function ScoringTab({ hrflowScore, aiAdjustment, bonus, savedBonus, setBonus, on
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
       <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 12 }}>Score breakdown</div>
+        <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 12 }}>Détail du score</div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>
           {[
-            { label: 'HRFlow Score', value: fmt(hrflowScore) },
-            { label: 'AI Adjustment', value: fmtAdj(aiAdjustment) },
-            { label: 'HR Bonus', value: savedBonus > 0 ? `+${savedBonus}%` : `${savedBonus}%` },
+            { label: 'Score HRFlow', value: fmt(hrflowScore) },
+            { label: 'Ajustement IA', value: fmtAdj(aiAdjustment) },
+            { label: 'Bonus RH', value: savedBonus > 0 ? `+${savedBonus}%` : `${savedBonus}%` },
             { label: 'Total', value: fmt(totalScore), highlight: true },
           ].map((item, i) => (
             <div key={item.label} className="anim-item" style={{ padding: '14px', background: item.highlight ? '#e8f4fd' : 'var(--bg)', border: `1px solid ${item.highlight ? '#b3d9f5' : 'var(--border)'}`, borderRadius: 'var(--radius-lg)', textAlign: 'center', '--item-index': i }}>
@@ -1086,8 +1112,8 @@ function ScoringTab({ hrflowScore, aiAdjustment, bonus, savedBonus, setBonus, on
 
       <div className="anim-item" style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px', '--item-index': 4 }}>
         <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 2 }}>HR Bonus adjustment</div>
-          <div style={{ fontSize: '.8rem', color: 'var(--text-muted)' }}>Manually override the candidate score. Value between −100 and +100.</div>
+          <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 2 }}>Ajustement du bonus RH</div>
+          <div style={{ fontSize: '.8rem', color: 'var(--text-muted)' }}>Modifier manuellement le score du candidat. Valeur entre −100 et +100.</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 0, border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden', background: 'var(--surface)' }}>
@@ -1108,13 +1134,13 @@ function ScoringTab({ hrflowScore, aiAdjustment, bonus, savedBonus, setBonus, on
             >+</button>
           </div>
           <button className="btn-primary" onClick={onSaveBonus} disabled={bonusSaving} style={{ minWidth: 70 }}>
-            {bonusSaving ? 'Saving…' : 'Save'}
+            {bonusSaving ? 'Enregistrement…' : 'Enregistrer'}
           </button>
         </div>
       </div>
 
       <div className="anim-item" style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px', marginTop: 16, '--item-index': 5, flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 14, flexShrink: 0 }}>Score evolution</div>
+        <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 14, flexShrink: 0 }}>Évolution du score</div>
         <ScoreEvolutionGraph
           profileKey={profileKey}
           jobKey={jobKey}
@@ -1134,7 +1160,7 @@ function ResumeTab({ profile }) {
   if (!pdfUrl) {
     return (
       <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 40 }}>
-        No PDF attachment available for this profile.
+        Aucune pièce jointe PDF disponible pour ce profil.
       </div>
     )
   }
@@ -1150,7 +1176,7 @@ function ResumeTab({ profile }) {
         borderRadius: 'var(--radius)',
         display: 'block',
       }}
-      title="Resume PDF"
+      title="CV PDF"
     />
   )
 }
@@ -1199,46 +1225,46 @@ function EmailTab({ job, candidateRef }) {
   return (
     <div className="anim-content">
       <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 12 }}>Email Candidate</div>
+        <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 12 }}>Envoyer un e-mail au candidat</div>
         
         <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px', marginBottom: 16 }}>
           <div style={{ marginBottom: 16, padding: '12px', background: '#f8f9fa', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
-            <div style={{ fontSize: '.75rem', fontWeight: 600, color: 'var(--accent)', marginBottom: 6 }}>Generation Guidelines</div>
+            <div style={{ fontSize: '.75rem', fontWeight: 600, color: 'var(--accent)', marginBottom: 6 }}>Consignes de génération</div>
             <textarea
               value={guidelines}
               onChange={(e) => setGuidelines(e.target.value)}
               style={{ width: '100%', minHeight: 60, padding: '8px', border: '1px solid var(--border)', borderRadius: 'var(--radius)', fontSize: '.8rem', background: '#fff', resize: 'vertical' }}
-              placeholder="Ex: 'Interview invitation', 'Polite rejection', 'Technical follow-up'..."
+              placeholder="Ex: 'Invitation à un entretien', 'Refus poli', 'Suivi technique'..."
             />
           </div>
 
           <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: '.8rem', color: 'var(--text-muted)', marginBottom: 4 }}>To:</div>
+            <div style={{ fontSize: '.8rem', color: 'var(--text-muted)', marginBottom: 4 }}>À :</div>
             <input
               type="text"
               value={emailData.to}
               onChange={(e) => setEmailData({ ...emailData, to: e.target.value })}
               style={{ width: '100%', padding: '8px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--surface)', fontSize: '.875rem' }}
-              placeholder="candidate@email.com"
+              placeholder="candidat@email.com"
             />
           </div>
           <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: '.8rem', color: 'var(--text-muted)', marginBottom: 4 }}>Subject:</div>
+            <div style={{ fontSize: '.8rem', color: 'var(--text-muted)', marginBottom: 4 }}>Objet :</div>
             <input
               type="text"
               value={emailData.subject}
               onChange={(e) => setEmailData({ ...emailData, subject: e.target.value })}
               style={{ width: '100%', padding: '8px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--surface)', fontSize: '.875rem' }}
-              placeholder="Email subject"
+              placeholder="Objet de l'e-mail"
             />
           </div>
           <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: '.8rem', color: 'var(--text-muted)', marginBottom: 4 }}>Message:</div>
+            <div style={{ fontSize: '.8rem', color: 'var(--text-muted)', marginBottom: 4 }}>Message :</div>
             <textarea
               value={emailData.body}
               onChange={(e) => setEmailData({ ...emailData, body: e.target.value })}
               style={{ width: '100%', minHeight: 200, padding: '12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--surface)', fontSize: '.875rem', lineHeight: 1.5, resize: 'vertical' }}
-              placeholder="Email body content..."
+              placeholder="Contenu de l'e-mail..."
             />
           </div>
 
@@ -1249,7 +1275,7 @@ function EmailTab({ job, candidateRef }) {
               disabled={loading}
               style={{ flex: 1 }}
             >
-              {loading ? <div className="spinner" style={{ width: 14, height: 14, border: '2px solid #666', borderTopColor: 'transparent' }} /> : 'Generate with AI'}
+              {loading ? <div className="spinner" style={{ width: 14, height: 14, border: '2px solid #666', borderTopColor: 'transparent' }} /> : 'Générer avec l\'IA'}
             </button>
             <button 
               className="btn-primary" 
@@ -1257,7 +1283,7 @@ function EmailTab({ job, candidateRef }) {
               disabled={loading || !emailData.subject || !emailData.body || !emailData.to}
               style={{ flex: 1 }}
             >
-              Open in Mail Client
+              Ouvrir dans le client de messagerie
             </button>
           </div>
 

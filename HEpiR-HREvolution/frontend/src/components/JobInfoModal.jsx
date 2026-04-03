@@ -57,6 +57,13 @@ const s = {
   level: { fontSize: '.65rem', fontWeight: 600, opacity: 0.7, textTransform: 'uppercase' },
 }
 
+const SKILL_LEVELS = {
+  beginner: 'Débutant',
+  intermediate: 'Intermédiaire',
+  advanced: 'Avancé',
+  expert: 'Expert',
+}
+
 function _skill_name(s) {
   return s?.name || (typeof s === 'string' ? s : '')
 }
@@ -79,14 +86,14 @@ export default function JobInfoModal({ job, onClose }) {
     <div style={s.overlay} className={closing ? 'anim-overlay-exit' : 'anim-overlay'} onClick={handleClose}>
       <div style={s.modal} className={closing ? 'anim-modal-exit' : 'anim-modal'} onClick={(e) => e.stopPropagation()}>
         <div style={s.header}>
-          <div style={s.title}>{job.name || 'Job Details'}</div>
+          <div style={s.title}>{job.name || 'Détails du poste'}</div>
           <button style={s.close} onClick={handleClose}>✕</button>
         </div>
 
         <div style={s.body}>
           {location && (
             <div style={s.section}>
-              <div style={s.label}>Location</div>
+              <div style={s.label}>Emplacement</div>
               <div style={s.text}>{location}</div>
             </div>
           )}
@@ -100,12 +107,12 @@ export default function JobInfoModal({ job, onClose }) {
 
           {skills.length > 0 && (
             <div style={s.section}>
-              <div style={s.label}>Requirements</div>
+              <div style={s.label}>Exigences</div>
               <div style={s.chipRow}>
                 {skills.map((sk, i) => (
                   <span key={i} style={s.chip(sk.value)}>
                     {_skill_name(sk)}
-                    {sk.value && <span style={s.level}>{sk.value}</span>}
+                    {sk.value && <span style={s.level}>{SKILL_LEVELS[sk.value] || sk.value}</span>}
                   </span>
                 ))}
               </div>
@@ -114,7 +121,7 @@ export default function JobInfoModal({ job, onClose }) {
           
           {!job.summary && !skills.length && (
             <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '20px 0' }}>
-              No detailed information available for this job.
+              Aucune information détaillée disponible pour ce poste.
             </div>
           )}
         </div>

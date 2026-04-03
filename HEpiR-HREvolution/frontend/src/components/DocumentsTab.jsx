@@ -4,13 +4,13 @@ import { getExtraDocuments, uploadExtraDocument, uploadExtraDocumentFile, gradeC
 function formatDate(iso) {
   if (!iso) return ''
   const d = new Date(iso)
-  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) +
-    ' ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) +
+    ' ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
 }
 
 function preview(content) {
   const lines = (content || '').split('\n').slice(0, 2).join(' ')
-  return lines.length > 120 ? lines.slice(0, 120) + '…' : lines || '(empty)'
+  return lines.length > 120 ? lines.slice(0, 120) + '…' : lines || '(vide)'
 }
 
 // ---------------------------------------------------------------------------
@@ -137,10 +137,10 @@ function DocumentBubble({ doc, onView }) {
         <div style={sb.divider} />
         <div style={sb.preview}>{preview(doc.content)}</div>
         <button style={sb.viewBtn} onClick={() => onView(doc)}>
-          View full text ›
+          Voir le texte complet ›
         </button>
         <div style={sb.footer}>
-          {doc.uploaded_by && <span>{doc.uploaded_by} · </span>}
+          {doc.uploaded_by === 'You' ? 'Vous' : doc.uploaded_by}{doc.uploaded_by ? ' · ' : ''}
           {formatDate(doc.uploaded_at)}
         </div>
       </div>
@@ -259,7 +259,7 @@ function VoiceRecorder({ onTranscribed, disabled }) {
           const result = await transcribeAudio(file)
           onTranscribed(result.text)
         } catch (e) {
-          setError('Transcription failed: ' + e.message)
+          setError('La transcription a échoué : ' + e.message)
         } finally {
           setPhase('idle')
         }
@@ -270,7 +270,7 @@ function VoiceRecorder({ onTranscribed, disabled }) {
       setSeconds(0)
       timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000)
     } catch {
-      setError('Microphone access denied or unavailable.')
+      setError('Accès au microphone refusé ou indisponible.')
     }
   }
 
@@ -290,9 +290,9 @@ function VoiceRecorder({ onTranscribed, disabled }) {
           className="btn-secondary"
           onClick={startRecording}
           disabled={disabled}
-          title="Record a voice note — transcription will appear in the text area for editing"
+          title="Enregistrer une note vocale — la transcription apparaîtra dans la zone de texte pour modification"
         >
-          🎙 Record
+          🎙 Enregistrer
         </button>
       )}
       {phase === 'recording' && (
@@ -306,14 +306,14 @@ function VoiceRecorder({ onTranscribed, disabled }) {
             onClick={stopRecording}
             style={{ borderColor: '#e01e5a', color: '#e01e5a' }}
           >
-            ⏹ Stop
+            ⏹ Arrêter
           </button>
         </>
       )}
       {phase === 'transcribing' && (
         <span style={{ fontSize: '.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
           <div className="spinner" style={{ width: 12, height: 12 }} />
-          Transcribing…
+          Transcription…
         </span>
       )}
       {error && <span style={{ fontSize: '.75rem', color: '#c0392b' }}>{error}</span>}
@@ -376,7 +376,7 @@ function DocumentInput({ onSend, onUploadFile }) {
     <div style={si.root}>
       <input
         style={si.filenameInput}
-        placeholder="Filename (optional, e.g. interview_notes)"
+        placeholder="Nom du fichier (optionnel, ex: notes_entretien)"
         value={filename}
         onChange={(e) => setFilename(e.target.value)}
         disabled={sending}
@@ -384,7 +384,7 @@ function DocumentInput({ onSend, onUploadFile }) {
       <textarea
         ref={textareaRef}
         style={si.textarea}
-        placeholder="Type or paste text content… (Ctrl+Enter to send)"
+        placeholder="Tapez ou collez du contenu textuel… (Ctrl+Entrée pour envoyer)"
         value={content}
         onChange={(e) => setContent(e.target.value)}
         onKeyDown={handleKey}
@@ -405,19 +405,19 @@ function DocumentInput({ onSend, onUploadFile }) {
             className="btn-secondary"
             onClick={() => fileInputRef.current?.click()}
             disabled={sending}
-            title="Upload audio (mp3, m4a, wav), text (pdf, docx, txt)"
+            title="Télécharger audio (mp3, m4a, wav), texte (pdf, docx, txt)"
           >
-            📎 {sending ? '...' : 'Upload File'}
+            📎 {sending ? '...' : 'Télécharger le fichier'}
           </button>
           <VoiceRecorder onTranscribed={handleTranscribed} disabled={sending} />
-          <span style={si.hint}>Ctrl+Enter to send</span>
+          <span style={si.hint}>Ctrl+Entrée pour envoyer</span>
         </div>
         <button
           className="btn-primary"
           onClick={handleSend}
           disabled={sending || !content.trim()}
         >
-          {sending ? 'Sending…' : 'Send'}
+          {sending ? 'Envoi…' : 'Envoyer'}
         </button>
       </div>
     </div>
@@ -502,14 +502,14 @@ export default function DocumentsTab({ profileKey, jobKey, onGraded, onProcessin
       filename: filename.trim() || 'document',
       content,
       uploaded_at: new Date().toISOString(),
-      uploaded_by: 'You',
+      uploaded_by: 'Vous',
       delta: null,
       delta_rationale: null,
       processing: true,
     }
     setDocuments((prev) => [...prev, optimistic])
     // Auto re-grade then synthesize — onGraded owns the full chain and clears processing
-    onProcessingChange?.(profileKey, 'Grading…')
+    onProcessingChange?.(profileKey, 'Évaluation…')
     try {
       const gradeResult = await gradeCandidate(jobKey, profileKey)
 
@@ -521,12 +521,12 @@ export default function DocumentsTab({ profileKey, jobKey, onGraded, onProcessin
       await onGraded?.(gradeResult)  // awaited: score update → synthesis → processing cleared
     } catch (e) {
       console.error('grading failed:', e)
-      onProcessingChange?.(profileKey, 'Updating profile…')
+      onProcessingChange?.(profileKey, 'Mise à jour du profil…')
     }
   }
 
   const handleFileUpload = async (file) => {
-    onProcessingChange?.(profileKey, 'Processing file…')
+    onProcessingChange?.(profileKey, 'Traitement du fichier…')
     try {
       const uploaded = await uploadExtraDocumentFile(profileKey, jobKey, file)
       // Optimistically append extracted content immediately
@@ -535,14 +535,14 @@ export default function DocumentsTab({ profileKey, jobKey, onGraded, onProcessin
         filename: file.name,
         content: uploaded.content || '',
         uploaded_at: new Date().toISOString(),
-        uploaded_by: 'You',
+        uploaded_by: 'Vous',
         delta: null,
         delta_rationale: null,
         processing: true,
       }
       setDocuments((prev) => [...prev, optimistic])
       
-      onProcessingChange?.(profileKey, 'Grading…')
+      onProcessingChange?.(profileKey, 'Évaluation…')
       const result = await gradeCandidate(jobKey, profileKey)
 
       if (result.documents?.length > 0) {
@@ -552,7 +552,7 @@ export default function DocumentsTab({ profileKey, jobKey, onGraded, onProcessin
       await onGraded?.(result)
     } catch (e) {
       console.error('file upload/processing failed:', e)
-      onProcessingChange?.(profileKey, 'Updating profile…')
+      onProcessingChange?.(profileKey, 'Mise à jour du profil…')
       throw e
     }
   }
@@ -565,8 +565,8 @@ export default function DocumentsTab({ profileKey, jobKey, onGraded, onProcessin
         ) : documents.length === 0 ? (
           <div style={sd.empty}>
             <div style={{ fontSize: '1.5rem', marginBottom: 8 }}>📄</div>
-            <div style={{ fontWeight: 500, marginBottom: 4 }}>No documents yet</div>
-            <div style={{ fontSize: '.8rem' }}>Send supplementary text to enrich the AI grading.</div>
+            <div style={{ fontWeight: 500, marginBottom: 4 }}>Aucun document pour le moment</div>
+            <div style={{ fontSize: '.8rem' }}>Envoyez du texte supplémentaire pour enrichir l'évaluation de l'IA.</div>
           </div>
         ) : (
           documents.map((doc, i) => (
