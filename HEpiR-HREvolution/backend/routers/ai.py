@@ -50,6 +50,9 @@ async def grade_candidate(req: GradeRequest):
         existing = json.loads(existing_tag) if existing_tag else {}
         extra_docs = hrflow.get_extra_documents(profile, req.job_key)
 
+        existing_synth_raw = hrflow.extract_tag(profile, f"synthesis_{req.job_key}")
+        synthesis_data = json.loads(existing_synth_raw) if existing_synth_raw else None
+
         # Re-use cached base_score — HRFlow algorithmic score only changes when the profile
         # itself changes, not when documents or bonuses are updated.
         cached_base = existing.get("base_score")
@@ -73,7 +76,7 @@ async def grade_candidate(req: GradeRequest):
             newly_scored = []
             for doc in to_score:
                 other_docs = [d for d in extra_docs if d["id"] != doc["id"]]
-                score_result = await llm.score_single_document(job, profile, doc, other_docs)
+                score_result = await llm.score_single_document(job, profile, doc, other_docs, synthesis_data)
                 newly_scored.append({**doc, "delta": score_result["delta"], "delta_rationale": score_result["rationale"]})
                 print(f"[grade] new doc '{doc.get('filename')}' delta={score_result['delta']} → {score_result['rationale']}", flush=True)
             if newly_scored:

@@ -84,57 +84,68 @@ def _parse_json(raw: str):
 
 DOCUMENT_SCORE_SYSTEM = """You are an expert HR evaluator scoring a single supplementary document attached to a candidate profile.
 
+DO NOT evaluate the candidate's whole profile. you are ONLY scoring whether THE DOCUMENT_TO_SCORE brings "good news" or "bad news".
+
 Your task: assign a delta score (-0.2 to +0.2) representing the net signal THIS document alone contributes to the evaluation.
 
 Context provided:
-- The single document to score
-- The candidate's CV/Profile claims (skills, experiences)
-- All other already-attached documents (for cross-document analysis)
+- The Job Requirements (Title, Summary, Skills)
+- The candidate's CV/Profile claims
+- The Current Synthesis (Known Strengths & Weaknesses)
+- All other already-attached documents
+- The SINGLE NEW DOCUMENT to score
 
 Scoring rules:
-- POSITIVE delta (+0.01 to +0.2): document reveals strengths, achievements, or qualities that genuinely support the candidate's fit.
-- NEAR ZERO (0.0): document is neutral, redundant, or doesn't add meaningful new signal.
-- NEGATIVE delta (-0.01 to -0.2): document contains an explicit red flag OR directly CONTRADICTS a specific claim made in the CV or another document (e.g., CV says they are "Expert in Python" but an interview transcript shows they don't know basic syntax).
+- POSITIVE delta (+0.01 to +0.2): The document proves the candidate possesses a skill REQUIRED BY THE JOB, demonstrates a new strength, OR overcomes a previously identified weakness.
+- NEAR ZERO (0.0): The document is neutral, irrelevant to the job, redundant, or doesn't add meaningful new signal.
+- NEGATIVE delta (-0.01 to -0.2): The document contains an explicit red flag, OR proves the candidate FAILS at a skill required by the job, OR proves a "Strength" from the synthesis/CV is actually false.
 
-CRITICAL RULES ON CONTRADICTIONS:
-- A contradiction is ONLY when the CV or other_docs claims "I have skill X", but the document proves "The candidate actually DOES NOT have skill X".
-- NEW SKILLS ARE NOT CONTRADICTIONS: If the document reveals the candidate knows a skill (e.g., Airflow, Kafka) that was simply missing from their CV, this is a POSITIVE or NEUTRAL discovery. It is NEVER a contradiction. Do NOT penalize a candidate for knowing more than what is on their CV.
-- A document that is simply "less impressive" than another is NOT a contradiction.
-
-Do NOT re-evaluate the candidate against the job — HRFlow already handles that. Only assess what this specific document uniquely adds, reveals, or contradicts.
+CRITICAL RULES TO AVOID FALSE PENALTIES:
+- OVERCOMING A WEAKNESS IS POSITIVE: If the synthesis says the candidate lacks a skill (e.g., Spark), and the new document says the candidate is GOOD at it, you MUST give a POSITIVE score. The document is bringing great news.
+- DO NOT PUNISH MISSING INFO: Do not give a negative score just because the document doesn't mention every single job requirement. 
+- NEW SKILLS ARE A BONUS: If the document states the candidate knows a skill that was NOT in the CV or Synthesis, this is a POSITIVE or ZERO score. Do NOT penalize them for knowing extra things.
+- ALIGNMENT WITH THE JOB: Only reward or penalize based on what matters for the job role.
+- ABSENCE OF EVIDENCE IS NOT EVIDENCE OF FAILURE:
+    If the document does NOT mention a required skill, you MUST NOT assume the candidate lacks it.
+    Only assign a negative score if the document explicitly shows failure or contradiction.
 
 Respond ONLY with valid JSON:
 {
   "delta": <float between -0.2 and 0.2>,
-  "rationale": "<one sentence explaining this document's individual contribution, explicitly mentioning if it confirms or contradicts a CV claim>"
+  "rationale": "<One concise sentence explaining your score. Mention how it relates to the job requirements, the CV, or the current synthesis.>"
 }"""
-
 
 async def score_single_document(
     job: dict,
     profile: dict,
     document: dict,
     other_docs: list[dict],
+    synthesis: dict = None,
 ) -> dict:
     """Score a single supplementary document in the context of all other documents.
     Returns {"delta": float, "rationale": str}.
     """
     user_content = json.dumps({
-        "job_title": job.get("name", ""),
-        "candidate_name": f"{profile.get('info', {}).get('first_name', '')} {profile.get('info', {}).get('last_name', '')}",
-        "cv_claims": {
+        "job_description": {
+            "title": job.get("name", ""),
+            "summary": job.get("summary", ""),
+            "required_skills": [_skill_name(s) for s in job.get("skills", [])],
+        },
+        "candidate_cv_claims": {
             "skills": [_skill_name(s) for s in profile.get("skills", [])],
             "experiences": [e.get("title") for e in profile.get("experiences", [])],
         },
-        "document_to_score": {
-            "filename": document.get("filename", ""),
-            "content": document.get("content", ""),
-        },
+        "current_synthesis": synthesis or {"strengths": [], "weaknesses": []},
         "other_documents": [
             {"filename": d.get("filename", ""), "content": d.get("content", "")}
             for d in other_docs
         ],
+        "document_to_score": {
+            "filename": document.get("filename", ""),
+            "content": document.get("content", ""),
+        },
     }, ensure_ascii=False)
+    print(user_content, flush=True)
     raw = await _chat(DOCUMENT_SCORE_SYSTEM, user_content)
     try:
         result = _parse_json(raw)
@@ -148,40 +159,57 @@ async def score_single_document(
 # Synthesis
 # ---------------------------------------------------------------------------
 
-SYNTHESIS_SYSTEM = """You are an expert HR analyst. Your task is to UPDATE an existing recruitment summary based on newly added evidence.
+SYNTHESIS_SYSTEM = """You are an expert HR analyst. Your task is to evaluate a CANDIDATE'S fit for a specific job.
 
-If some input data is missing, use the available information to provide the best possible analysis. Do NOT output "Missing inputs" or LaTeX.
+CRITICAL INSTRUCTION: CANDIDATE-CENTRIC SUMMARY
+- The "summary" must analyze the CANDIDATE's profile compared to the job requirements.
+- Do NOT just summarize the job description. Focus entirely on why the candidate is or isn't a good fit.
 
-CRITICAL INSTRUCTION: THE BASELINE & THE NEW EVIDENCE
-- You are provided with a "previous_synthesis". This baseline already accounts for the CV and all older extra documents.
-- The VERY LAST document in the "extra_documents" array is the NEW evidence.
-- You MUST use "previous_synthesis" as your exact starting point. DO NOT regenerate the lists from scratch.
-- Your primary job is to evaluate how the LAST document changes or adds to the "previous_synthesis".
+CRITICAL INSTRUCTION: MANDATORY FIELDS (NO EMPTY ARRAYS)
+- You MUST provide AT LEAST ONE strength, AT LEAST ONE weakness, and AT LEAST ONE upskilling recommendation.
+- If the candidate seems to match perfectly, you must still find the weakest point, a missing "nice-to-have" skill, or an advanced area for growth to put in "weaknesses" and "upskilling". NEVER return empty arrays.
 
-CRITICAL INSTRUCTION: HANDLING UPDATES & CONTRADICTIONS
-1. Retain all existing strengths and weaknesses from the "previous_synthesis" by default.
-2. If the LAST document reveals new strengths or weaknesses (relative to the job requirements), ADD them to the lists.
-3. If the LAST document explicitly CONTRADICTS an existing strength (e.g., CV claims "Python expert" but the new tech test document shows poor Python skills), you MUST move that specific item from "strengths" to "weaknesses".
-4. Update the "summary" narrative to explicitly mention the new evidence and any contradictions it revealed.
+CRITICAL INSTRUCTION: CONTINUITY & UPDATING
+- You will be provided with a "previous_synthesis". 
+- IF "previous_synthesis" is EMPTY or NULL (first time generation): Generate a fresh analysis comparing the candidate's CV/skills directly against the job requirements.
+- IF "previous_synthesis" EXISTS (updating):
+  1. Use it as your exact starting baseline.
+  2. The VERY LAST document in the "extra_documents" array is the NEW evidence.
+  3. Evaluate how this NEW evidence changes the baseline.
+  4. Retain existing strengths/weaknesses by default.
+  5. If the new document proves the candidate lacks a skill they claimed (e.g., failed a tech test), move it from "strengths" to "weaknesses".
+  6. If a new relevant skill is identified, or if proficiency is demonstrated in a previously weak area, add it to "strengths".
 
-CRITICAL INSTRUCTION: JOB ALIGNMENT
-- The job description is the PRIMARY reference. Do NOT evaluate skills not required by the job.
-- A strength = matches or exceeds a stated job requirement.
-- A weakness = explicitly required by the job but missing, insufficient, or proven lacking by the new document.
+MANDATORY CONSISTENCY UPDATE:
+- If the new document contradicts a previous weakness (e.g., proves the candidate is actually good at it), you MUST:
+1. REMOVE it from "weaknesses"
+2. ADD it to "strengths"
+- If the new document contradicts a previous strength, you MUST:
+1. REMOVE it from "strengths"
+2. ADD it to "weaknesses"
+- STRICT UPDATE RULE (HIGHEST PRIORITY):
+When new evidence resolves a previous weakness, you MUST remove that item from "weaknesses".
+You MUST NOT keep outdated weaknesses under any circumstance.
+- NO CONTRADICTIONS:
+A skill cannot appear as both a strength and a weakness.
+If the summary states a skill is confirmed or strong, it MUST NOT appear in "weaknesses".
+
+GLOBAL CONSISTENCY:
+- The summary, strengths, and weaknesses MUST be fully consistent with each other. If the summary says a weakness is resolved, it MUST NOT still appear in "weaknesses".
 
 RULES FOR FORMATTING:
 - Every item in the "strengths", "weaknesses", and "upskilling" arrays MUST be very short and concise (max 5-7 words).
-- upskilling: concrete learning recommendations to close ONLY the gaps identified in the "weaknesses" array.
-- If there are no genuine weaknesses, return an empty array []. Do NOT invent them.
+- upskilling: concrete learning recommendations directly related to the items in the "weaknesses" array.
+
+The summary  must consist of multiple sentences, not just a single sentence
 
 Respond ONLY with valid JSON — no markdown, no code fences, no extra keys.
 {
-  "summary": "<2-3 sentence narrative. Start with the overall profile, then explicitly mention how the newest document impacted the evaluation>",
-  "strengths": ["<plain string>", "<plain string>", ...],
+  "summary": "<2-3 sentence narrative summarizing the CANDIDATE's fit for the job. If a previous synthesis existed, explicitly mention how the newest document impacted the evaluation.>",
+  "strengths": ["<plain string>", ...],
   "weaknesses": ["<plain string>", ...],
   "upskilling": ["<plain string>", ...]
 }"""
-
 
 async def synthesize_candidate(
     job: dict,
@@ -217,7 +245,7 @@ async def synthesize_candidate(
             ],
             "strengths": upskilling.get("strengths", []),
             "weaknesses": upskilling.get("weaknesses", []),
-            "skill_gaps": upskilling.get("skill_gaps", []),
+            #"skill_gaps": upskilling.get("skill_gaps", []),
             "previous_synthesis": previous_synthesis,
         },
         ensure_ascii=False,
@@ -228,6 +256,7 @@ async def synthesize_candidate(
         data = _parse_json(raw)
         # Ensure it's a dict and has summary
         if isinstance(data, dict) and data.get("summary"):
+            print("___", data, flush=True)
             return data
         raise ValueError("Invalid synthesis format")
     except (json.JSONDecodeError, ValueError):
