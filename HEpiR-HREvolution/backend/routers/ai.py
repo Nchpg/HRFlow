@@ -140,12 +140,20 @@ async def synthesize_candidate(req: SynthesizeRequest):
         final_score = json.loads(raw_tag).get("score", 0.5) if raw_tag else 0.5
         extra_docs = hrflow.get_extra_documents(profile, req.job_key)
 
+        existing_synth_raw = hrflow.extract_tag(profile, f"synthesis_{req.job_key}")
+        existing_synthesis = None
+        if existing_synth_raw:
+            try:
+                existing_synthesis = json.loads(existing_synth_raw)
+            except Exception:
+                pass
+
         synthesis = None
         last_err = None
         for attempt in range(2):
             try:
                 synthesis = await llm.synthesize_candidate(
-                    job, profile, tracking or {}, upskilling, final_score, extra_docs
+                    job, profile, tracking or {}, upskilling, final_score, extra_docs, existing_synthesis
                 )
                 if synthesis and isinstance(synthesis, dict) and synthesis.get("summary"):
                     break

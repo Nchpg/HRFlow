@@ -96,7 +96,10 @@ Scoring rules:
 - NEAR ZERO (0.0): document is neutral, redundant, or doesn't add meaningful new signal.
 - NEGATIVE delta (-0.01 to -0.2): document contains an explicit red flag OR directly CONTRADICTS a specific claim made in the CV or another document (e.g., CV says they are "Expert in Python" but an interview transcript shows they don't know basic syntax).
 
-Critical: a document that is simply "less impressive" than another is NOT a contradiction — assign 0 or a small positive, never negative. Only genuine factual contradictions or explicit red flags warrant a negative delta.
+CRITICAL RULES ON CONTRADICTIONS:
+- A contradiction is ONLY when the CV or other_docs claims "I have skill X", but the document proves "The candidate actually DOES NOT have skill X".
+- NEW SKILLS ARE NOT CONTRADICTIONS: If the document reveals the candidate knows a skill (e.g., Airflow, Kafka) that was simply missing from their CV, this is a POSITIVE or NEUTRAL discovery. It is NEVER a contradiction. Do NOT penalize a candidate for knowing more than what is on their CV.
+- A document that is simply "less impressive" than another is NOT a contradiction.
 
 Do NOT re-evaluate the candidate against the job — HRFlow already handles that. Only assess what this specific document uniquely adds, reveals, or contradicts.
 
@@ -145,51 +148,35 @@ async def score_single_document(
 # Synthesis
 # ---------------------------------------------------------------------------
 
-SYNTHESIS_SYSTEM = """You are an expert HR analyst. Given a job, a candidate profile, their
-application data, extra documents (like interview transcripts or technical tests), and scoring analysis,
-write a concise structured recruitment summary.
+SYNTHESIS_SYSTEM = """You are an expert HR analyst. Your task is to UPDATE an existing recruitment summary based on newly added evidence.
 
-If some input data is missing (e.g. empty job summary or empty candidate skills), do NOT output "Missing inputs" or LaTeX.
-Instead, use the available information (like the job title and candidate experiences) to provide the best possible analysis.
+If some input data is missing, use the available information to provide the best possible analysis. Do NOT output "Missing inputs" or LaTeX.
 
-Critical Instruction on Job Alignment:
-- The job description is the PRIMARY reference for evaluation.
-- You MUST use the job requirements to determine what counts as a strength or a weakness.
-- A strength = something that directly matches or exceeds a stated job requirement.
-- A weakness = something explicitly required by the job but missing or insufficient in the candidate profile or disproven by later documents.
-- You MUST NOT evaluate skills that are not required by the job.
+CRITICAL INSTRUCTION: THE BASELINE & THE NEW EVIDENCE
+- You are provided with a "previous_synthesis". This baseline already accounts for the CV and all older extra documents.
+- The VERY LAST document in the "extra_documents" array is the NEW evidence.
+- You MUST use "previous_synthesis" as your exact starting point. DO NOT regenerate the lists from scratch.
+- Your primary job is to evaluate how the LAST document changes or adds to the "previous_synthesis".
 
-Critical Instruction on Document Order and Contradictions:
-- You MUST analyze documents in their chronological or provided order.
-- If a later document contradicts or weakens information from an earlier document, you MUST:
-  1. Explicitly highlight the contradiction.
-  2. PRIORITIZE the information from the most recent / later document..
-- If multiple documents conflict, always give more weight to the latest or most reliable evidence.
-- Clearly explain how the evaluation evolved based on the sequence of documents.
+CRITICAL INSTRUCTION: HANDLING UPDATES & CONTRADICTIONS
+1. Retain all existing strengths and weaknesses from the "previous_synthesis" by default.
+2. If the LAST document reveals new strengths or weaknesses (relative to the job requirements), ADD them to the lists.
+3. If the LAST document explicitly CONTRADICTS an existing strength (e.g., CV claims "Python expert" but the new tech test document shows poor Python skills), you MUST move that specific item from "strengths" to "weaknesses".
+4. Update the "summary" narrative to explicitly mention the new evidence and any contradictions it revealed.
 
-Critical Instruction on Contradictions:
-- Compare the candidate's claims (from CV/profile) with evidence from extra documents.
-- If an extra document (e.g., an interview) reveals a weakness or lack of skill that contradicts a claim in the CV,
-  PRIORITIZE the evidence from the extra document and explicitly mention this contradiction in the summary.
-- Adjust strengths and weaknesses accordingly: what was a "strength" in the CV might become a "weakness" if the
-  interview evidence shows they actually lack that skill.
+CRITICAL INSTRUCTION: JOB ALIGNMENT
+- The job description is the PRIMARY reference. Do NOT evaluate skills not required by the job.
+- A strength = matches or exceeds a stated job requirement.
+- A weakness = explicitly required by the job but missing, insufficient, or proven lacking by the new document.
 
-Rules for strengths weaknesses and upskills:
-- You MUST provide at least one strength, at least one weakness, and at least one upskilling recommendation.
-- Every item in the "strengths", "weaknesses", and "upskilling" arrays MUST be very short and concise (max 5-7 words). Do NOT use long sentences.
-- strengths: skills, experiences, or qualities that directly match or exceed the job requirements,
-  verified across ALL available documents.
-- weaknesses: ONLY skills or experiences that are EXPLICITLY required by the job description AND clearly absent
-  from the candidate's profile OR proven to be lacking by evidence in the extra documents (e.g. an interview).
-  A skill not mentioned anywhere in the job offer is NOT a weakness, even if the candidate does not have it.
-  Do NOT invent weaknesses. If there are no genuine weaknesses, return an empty array.
-- upskilling: concrete learning recommendations to close ONLY the gaps identified as real weaknesses above.
-  Do NOT add upskilling recommendations for skills not required by the job.
+RULES FOR FORMATTING:
+- Every item in the "strengths", "weaknesses", and "upskilling" arrays MUST be very short and concise (max 5-7 words).
+- upskilling: concrete learning recommendations to close ONLY the gaps identified in the "weaknesses" array.
+- If there are no genuine weaknesses, return an empty array []. Do NOT invent them.
 
 Respond ONLY with valid JSON — no markdown, no code fences, no extra keys.
-Every value in "strengths", "weaknesses", and "upskilling" MUST be a plain string, not an object.
 {
-  "summary": "<2-3 sentence narrative, explicitly noting any major contradictions found between the CV and extra documents>",
+  "summary": "<2-3 sentence narrative. Start with the overall profile, then explicitly mention how the newest document impacted the evaluation>",
   "strengths": ["<plain string>", "<plain string>", ...],
   "weaknesses": ["<plain string>", ...],
   "upskilling": ["<plain string>", ...]
@@ -203,6 +190,7 @@ async def synthesize_candidate(
     upskilling: dict,
     final_score: float,
     extra_docs: list[dict] = None,
+    previous_synthesis: dict = None,
 ) -> dict:
     """Generate a structured candidate synthesis."""
     user_content = json.dumps(
@@ -230,9 +218,11 @@ async def synthesize_candidate(
             "strengths": upskilling.get("strengths", []),
             "weaknesses": upskilling.get("weaknesses", []),
             "skill_gaps": upskilling.get("skill_gaps", []),
+            "previous_synthesis": previous_synthesis,
         },
         ensure_ascii=False,
     )
+    print(previous_synthesis, flush=True)
     raw = await _chat(SYNTHESIS_SYSTEM, user_content)
     try:
         data = _parse_json(raw)
