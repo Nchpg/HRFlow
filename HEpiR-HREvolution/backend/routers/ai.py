@@ -7,7 +7,7 @@ from services import hrflow, llm
 
 router = APIRouter()
 
-MAGIC_FILENAME = "entretien_resume.pdf"
+MAGIC_FILENAME = "compte_rendu_julien_roche.pdf"
 
 
 class GradeRequest(BaseModel):
@@ -47,7 +47,7 @@ async def grade_candidate(req: GradeRequest):
         job = await hrflow.get_job(req.job_key)
         profile = await hrflow.get_profile(req.profile_key, use_cache=False)
 
-        is_demo = any(t.get("name") == "is_demo_joris" for t in profile.get("tags", []))
+        is_demo = any(t.get("name") == "is_demo" for t in profile.get("tags", []))
 
         existing_tag = hrflow.extract_tag(profile, f"job_data_{req.job_key}")
         existing = json.loads(existing_tag) if existing_tag else {}
@@ -57,7 +57,7 @@ async def grade_candidate(req: GradeRequest):
 
         # 1. GESTION DU SCORE DE BASE
         if is_demo:
-            base_score = 0.95
+            base_score = 0.85
         else:
             cached_base = existing.get("base_score")
             if cached_base is not None:
@@ -78,8 +78,8 @@ async def grade_candidate(req: GradeRequest):
                 if is_demo and doc.get("filename", "").lower() == MAGIC_FILENAME.lower():
                     newly_scored.append({
                         **doc, 
-                        "delta": 0.01, 
-                        "delta_rationale": "Ce document confirme formellement l'expertise et l'excellent savoir-être de Joris."
+                        "delta": 0.06, 
+                        "delta_rationale": "Le compte-rendu confirme la maîtrise de Python et de TypeScript, comblant ainsi deux faiblesses précédemment identifiées."
                     })
                 else:
                     # Pour TOUT AUTRE document (même pour Joris), on utilise le vrai LLM !
@@ -146,7 +146,7 @@ async def synthesize_candidate(req: SynthesizeRequest):
     try:
         job, profile, tracking = await _fetch_context(req.job_key, req.profile_key)
 
-        is_demo = any(t.get("name") == "is_demo_joris" for t in profile.get("tags", []))
+        is_demo = any(t.get("name") == "is_demo" for t in profile.get("tags", []))
         extra_docs = hrflow.get_extra_documents(profile, req.job_key)
         if is_demo:
             last_doc = extra_docs[-1] if extra_docs else None
@@ -154,10 +154,10 @@ async def synthesize_candidate(req: SynthesizeRequest):
             if not last_doc:
                 # 1. Aucun document -> Synthèse de base Joris
                 synthesis = {
-                    "summary": "Joris est un candidat absolument parfait pour ce rôle. Son profil technique correspond à 100% aux exigences du poste et son expérience montre une capacité d'adaptation et un leadership remarquables.",
-                    "strengths": ["Maîtrise totale de la stack technique", "Esprit d'équipe et leadership", "Excellente vision produit"],
-                    "weaknesses": ["Peut s'ennuyer si les tâches manquent de challenge technique"],
-                    "upskilling": ["Se concentrer sur le mentoring d'autres développeurs"],
+                    "summary": "Julien Roche possède un profil fullstack solide, avec une maîtrise de JavaScript, React, Docker et des pratiques CI/CD, ainsi qu'une expérience en méthodes Agiles et en développement SaaS. Cependant, il manque d'expérience explicite en Python, en TypeScript et en tests avec Pytest, ainsi qu'une connaissance du secteur RH. Pour renforcer sa candidature, il devrait se former à ces technologies et acquérir des connaissances du domaine des ressources humaines.",
+                    "strengths": ["Maîtrise de JavaScript et React", "Expérience avec Docker et CI/CD", "Connaissance des méthodes Agiles", "Fullstack confirmé avec expérience SaaS", "Compétences en UI/UX et design moderne"],
+                    "weaknesses": ["Pas d'expérience explicite en Python", "Absence de mention de TypeScript", "Manque d'expérience avec Pytest", "Manque de connaissance du secteur RH"],
+                    "upskilling": ["Se former à Python pour le back-end", "Apprendre TypeScript", "Approfondir les tests Pytest", "Se former au secteur RH"],
                     "verdict": "strong_yes"
                 }
                 await _patch_tag(req.profile_key, profile, f"synthesis_{req.job_key}", json.dumps(synthesis))
@@ -166,10 +166,10 @@ async def synthesize_candidate(req: SynthesizeRequest):
             elif last_doc.get("filename", "").lower() == MAGIC_FILENAME.lower():
                 # 2. Le DERNIER document est le document magique -> Synthèse modifiée
                 synthesis = {
-                    "summary": "Joris confirme son excellence avec ce nouveau document. Les recommandations soulignent ses compétences exceptionnelles et valident de manière indéniable son adéquation parfaite au poste.",
-                    "strengths": ["Maîtrise totale de la stack technique", "Esprit d'équipe et leadership", "Excellente vision produit", "Recommandation élogieuse"],
-                    "weaknesses": ["Peut s'ennuyer si les tâches manquent de challenge technique"],
-                    "upskilling": ["Se concentrer sur le mentoring d'autres développeurs"],
+                    "summary": "Julien Roche montre une excellente maîtrise du fullstack, avec JavaScript, React, Node.js et des compétences DevOps validées. Les tests ont confirmé ses compétences en Python et TypeScript, comblant les lacunes précédentes. Seuls le manque d'expérience sur Pytest et la méconnaissance du secteur RH reste à développer, mais sa capacité d'adaptation est forte.",
+                    "strengths": ["Maîtrise de JavaScript et React", "Expérience avec Docker et CI/CD", "Connaissance des méthodes Agiles", "Fullstack confirmé avec expérience SaaS", "Compétences en UI/UX et design moderne", "Maîtrise de Python confirmée", "Bases solides en TypeScript"],
+                    "weaknesses": ["Manque d'expérience avec Pytest", "Manque de connaissance du secteur RH"],
+                    "upskilling": ["Approfondir les tests Pytest", "Se former au secteur RH"],
                     "verdict": "strong_yes"
                 }
                 await _patch_tag(req.profile_key, profile, f"synthesis_{req.job_key}", json.dumps(synthesis))
@@ -228,32 +228,44 @@ async def ask_questions(req: AskRequest):
     try:
         job, profile, _ = await _fetch_context(req.job_key, req.profile_key)
         
-        is_demo = any(t.get("name") == "is_demo_joris" for t in profile.get("tags", []))
+        is_demo = any(t.get("name") == "is_demo" for t in profile.get("tags", []))
         if is_demo:
             return {
                 "questions": [
                     {
-                        "category": "Technique",
-                        "question": "Pouvez-vous nous expliquer comment vous avez géré la scalabilité de l'infrastructure chez HEpiR lors de l'augmentation du trafic ?"
+                    "category": "Technique",
+                    "question": "Sur votre expérience de 2019 en SaaS, comment avez-vous architecturé la gestion des états complexes avec Redux Toolkit pour la plateforme de gestion locative ?"
                     },
                     {
-                        "category": "Technique",
-                        "question": "Avec votre expérience sur React et Node.js, comment abordez-vous le choix entre le rendu côté serveur (SSR) et le rendu côté client (CSR) pour une application RH ?"
+                    "category": "Technique",
+                    "question": "Vous mentionnez l'utilisation de Docker et AWS (EC2/S3) dans vos compétences. Comment avez-vous structuré vos pipelines CI/CD avec GitHub Actions pour déployer vos applications ?"
                     },
                     {
-                        "category": "Motivation",
-                        "question": "Qu'est-ce qui vous attire particulièrement dans ce poste de Fullstack Developer par rapport à vos précédentes expériences chez HEpiR ?"
+                    "category": "Technique",
+                    "question": "Pour la partie Backend, vous listez SQL/PostgreSQL et NoSQL/MongoDB. Selon quels critères choisissez-vous d'utiliser l'un ou l'autre sur un nouveau projet ?"
                     },
                     {
-                        "category": "Comportemental",
-                        "question": "Parlez-nous d'une situation où vous avez dû convaincre votre équipe d'adopter une nouvelle technologie ou une nouvelle méthodologie."
+                    "category": "Technique",
+                    "question": "Vous mentionnez Jest dans vos compétences. Quelle est votre stratégie pour maintenir une bonne couverture de tests sur une API REST construite avec Express ?"
                     },
                     {
-                        "category": "Technique",
-                        "question": "Comment assurez-vous la sécurité des données sensibles des candidats dans les architectures micro-services que vous avez mises en place ?"
+                    "category": "Technique",
+                    "question": "Lors de votre expérience de développeur junior, vous avez intégré des normes d'accessibilité web. Comment assurez-vous aujourd'hui le respect de ces normes lors de la création de composants complexes avec React et Tailwind CSS ?"
+                    },
+                    {
+                    "category": "Motivation",
+                    "question": "Qu'est-ce qui vous motive aujourd'hui à quitter le secteur de la gestion locative pour rejoindre notre projet ?"
+                    },
+                    {
+                    "category": "Comportemental",
+                    "question": "Lors de votre passage de développeur junior à des projets d'architecture SaaS plus complexes, comment avez-vous géré la montée en compétences sur des sujets d'automatisation ?"
+                    },
+                    {
+                    "category": "Comportemental",
+                    "question": "Travailler sur du SaaS implique souvent des compromis entre la vitesse de livraison et la dette technique. Pouvez-vous nous parler d'un moment où vous avez dû gérer cette balance en équipe ?"
                     }
                 ]
-            }
+                }
 
         extra_docs = hrflow.get_extra_documents(profile, req.job_key)
         questions = await llm.generate_questions(job, profile, extra_docs)

@@ -59,7 +59,25 @@ async def generate_candidate_email(profile_key: str, job_key: str, guidelines: s
         # Fetch extra documents
         extra_docs = hrflow.get_extra_documents(profile, job_key)
 
-        email_content = await llm.generate_email(job, profile, synthesis, guidelines, extra_docs)
+        # Fetch score and bonus from tags
+        score_data = {"score": 0.0, "base_score": 0.0, "ai_adjustment": 0.0, "bonus": 0.0}
+        raw_score = hrflow.extract_tag(profile, f"job_data_{job_key}")
+        if raw_score:
+            try:
+                tag_data = json.loads(raw_score)
+                base = tag_data.get("base_score") or 0.0
+                adj = tag_data.get("ai_adjustment") or 0.0
+                bonus = tag_data.get("bonus") or 0.0
+                score_data = {
+                    "base_score": base,
+                    "ai_adjustment": adj,
+                    "bonus": bonus,
+                    "score": base + adj + bonus
+                }
+            except:
+                pass
+
+        email_content = await llm.generate_email(job, profile, synthesis, guidelines, extra_docs, score_data.get("score", 0.0))
         return email_content
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
@@ -87,15 +105,15 @@ async def upload_resume(file: UploadFile = File(...), job_key: str = Form(None))
         profile_key = profile.get("key")
         info = profile.get("info", {})
 
-        if file.filename.lower() == "cv_joris_demo.pdf":
+        if file.filename.lower() == "CV_Julien_Roche_Demo.pdf".lower():
             print("Upload demo")
 
-            with open("joris.json", "r", encoding="utf-8") as f:
+            with open("demo.json", "r", encoding="utf-8") as f:
                 demo_data = json.load(f)
             
             demo_data["source_key"] = settings.hrflow_source_key
             demo_data["profile"]["key"] = profile_key
-            demo_data["profile"]["tags"] = [{"name": "is_demo_joris", "value": "true"}] + profile.get("tags", [])
+            demo_data["profile"]["tags"] = [{"name": "is_demo", "value": "true"}] + profile.get("tags", [])
 
             # On écrase le profil en force dans la base HrFlow
             async with httpx.AsyncClient() as client:

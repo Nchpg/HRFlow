@@ -44,6 +44,17 @@ def _headers() -> dict:
     }
 
 
+def _fix_profile_email(profile: dict) -> None:
+    """Rewrite emails ending in @email.com to @gmail.com (user request)."""
+    if not profile:
+        return
+    info = profile.get("info")
+    if info and isinstance(info, dict):
+        email = info.get("email")
+        if email and isinstance(email, str) and email.endswith("@email.com"):
+            info["email"] = email.replace("@email.com", "@gmail.com")
+
+
 # ---------------------------------------------------------------------------
 # Jobs
 # ---------------------------------------------------------------------------
@@ -151,7 +162,9 @@ async def get_profile(profile_key: str, use_cache: bool = True) -> dict:
             timeout=15,
         )
         r.raise_for_status()
-        return r.json().get("data", {})
+        profile = r.json().get("data", {})
+        _fix_profile_email(profile)
+        return profile
 
 
 _PROFILE_WRITABLE = {
@@ -223,6 +236,11 @@ async def list_trackings(job_key: str) -> list[dict]:
             j_key = t.get("job_key") or t.get("job", {}).get("key")
             if p_key in blacklist.get("profiles", []) or j_key in blacklist.get("jobs", []):
                 continue
+            
+            # Apply email fix on nested profile object if present
+            if "profile" in t:
+                _fix_profile_email(t["profile"])
+
             filtered.append(t)
         
         return filtered
@@ -271,13 +289,16 @@ async def list_all_profiles(limit: int = 100) -> list[dict]:
             return []
         data = r.json()
         profiles = (data.get("data") or {}).get("profiles", [])
-        
-        # Filter blacklisted profiles
-        blacklist = load_blacklist()
-        profiles = [p for p in profiles if p.get("key") not in blacklist.get("profiles", [])]
-        
-        return profiles
 
+        # Filter blacklisted profiles and apply email fix
+        blacklist = load_blacklist()
+        filtered = []
+        for p in profiles:
+            if p.get("key") not in blacklist.get("profiles", []):
+                _fix_profile_email(p)
+                filtered.append(p)
+
+        return filtered
 
 # ---------------------------------------------------------------------------
 # Scoring (HRFlow native)
@@ -346,7 +367,9 @@ async def parse_resume_file(file_bytes: bytes, filename: str) -> dict:
             timeout=60,
         )
         r.raise_for_status()
-        return r.json().get("data", {})
+        profile = r.json().get("data", {})
+        _fix_profile_email(profile)
+        return profile
 
 
 # ---------------------------------------------------------------------------

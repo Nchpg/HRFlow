@@ -1,0 +1,167 @@
+{
+    "source_key": "{{source_key}}",
+    "profile": {
+        "key":"{{profile_key}}",
+        "info": {
+            "full_name": "Julien Roche",
+            "first_name": "Julien",
+            "last_name": "Roche",
+            "email": "julien.roche@gmail.com",
+            "phone": "+33600000000",
+            "driving_license": null,
+            "date_birth": null,
+            "location": {
+                "text": "Nantes (44000)",
+                "lat": 47.2182641,
+                "lng": -1.5571805
+            },
+            "picture": "https://riminder-documents-eu-2019-12.s3-eu-west-1.amazonaws.com/teams/ea8d9da71d97b07d00831aab2a30e90e32122b12/sources/1671a471d52d667715d7db855212023d7b861a29/profiles/2423be7796fcbb37542294b66353f73f9851201c/parsing/picture.png",
+            "gender": "male",
+            "summary": "Développeur Fullstack Confirmé | Expert JavaScript (React / Node.js) Méthodes Agiles.\nSpécialiste de la livraison de fonctionnalités de bout en bout avec une forte sensibilité UX/UI."
+        },
+        "experiences": [
+            {
+            "location": {
+                "text": "Nantes"
+            },
+            "title": "Développeur Fullstack",
+            "company": "SmartRent",
+            "description": "Architecture SaaS : Développement d’une plateforme de gestion locative automatisée. Frontend : Création d’interfaces utilisateur dynamiques et complexes avec React.js et Redux Toolkit. Backend : Conception de micro-services sous Node.js (Express) pour la gestion des baux et des flux financiers. Intégration Fintech : Implémentation de Stripe (paiements récurrents) et DocuSign (signatures électroniques sécurisées). Data & Ops : Maintenance de bases de données PostgreSQL et déploiement continu via GitHub Actions sur AWS (S3, EC2). Réalisation marquante : Refonte complète du tunnel de dépôt de dossier : réduction du taux d’abandon de 25% via l’optimisation de la fluidité de l’interface.",
+            "date_start": "2019-04-01T00:00:00",
+            "date_end": "2026-04-05T00:00:00",
+            "skills": ["saas", "react.js", "redux toolkit", "node.js", "express", "stripe", "docusign", "postgresql", "github actions", "aws", "s3", "ec2"]
+            },
+            {
+            "location": {
+                "text": "Nantes"
+            },
+            "title": "Développeur Web Junior (Stage & CDD)",
+            "company": "DigitalNantes",
+            "description": "Développement de sites vitrines et e-commerce sur-mesure (JavaScript, PHP/SQL). Intégration responsive respectant les normes d’accessibilité web.",
+            "date_start": "2017-01-01T00:00:00",
+            "date_end": "2018-12-31T00:00:00",
+            "skills": ["javascript", "php", "sql", "responsive", "accessibilité web"]
+            }
+        ],
+        "educations": [
+            {
+            "location": {
+                "text": "Nantes"
+            },
+            "title": "Master Informatique & Innovation Numérique",
+            "description": "École IMT Atlantique (Nantes)",
+            "date_start": "2016-01-01T00:00:00",
+            "date_end": "2018-12-31T00:00:00",
+            "school": "IMT Atlantique"
+            },
+            {
+            "location": {
+                "text": "Nantes"
+            },
+            "title": "Licence Informatique",
+            "description": "Université de Nantes",
+            "date_start": "2013-01-01T00:00:00",
+            "date_end": "2016-12-31T00:00:00",
+            "school": "Université de Nantes"
+            }
+        ],
+        "skills": [
+            {
+            "name": "react",
+            "value": null
+            },
+            {
+            "name": "javascript",
+            "value": null
+            },
+            {
+            "name": "html5",
+            "value": null
+            },
+            {
+            "name": "css3",
+            "value": null
+            },
+            {
+            "name": "tailwind css",
+            "value": null
+            },
+            {
+            "name": "node.js",
+            "value": null
+            },
+            {
+            "name": "express",
+            "value": null
+            },
+            {
+            "name": "sql",
+            "value": null
+            },
+            {
+            "name": "postgresql",
+            "value": null
+            },
+            {
+            "name": "nosql",
+            "value": null
+            },
+            {
+            "name": "mongodb",
+            "value": null
+            },
+            {
+            "name": "rest api",
+            "value": null
+            },
+            {
+            "name": "git",
+            "value": null
+            },
+            {
+            "name": "docker",
+            "value": null
+            },
+            {
+            "name": "aws",
+            "value": null
+            },
+            {
+            "name": "s3",
+            "value": null
+            },
+            {
+            "name": "ec2",
+            "value": null
+            },
+            {
+            "name": "github actions",
+            "value": null
+            },
+            {
+            "name": "jest",
+            "value": null
+            }
+        ],
+        "languages": [
+            {
+                "name": "français",
+                "value": null
+            },
+            {
+                "name": "anglais",
+                "value": null
+            } 
+        ],
+        "interests": [
+            {
+                "name": "squash",
+                "value": null
+            },
+            {
+                "name": "bière locale",
+                "value": null
+            }
+        ]
+    }
+}
