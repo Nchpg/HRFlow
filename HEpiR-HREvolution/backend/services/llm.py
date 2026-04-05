@@ -46,7 +46,7 @@ async def transcribe_audio(audio_bytes: bytes, filename: str) -> str:
     # Use a multimodal model for audio transcription.
     # Google's gemini-2.0-flash is great for this and often has a free tier.
     # We use a specific model that supports audio input.
-    model = "google/gemini-2.0-flash-001"
+    model = "mistralai/voxtral-small-24b-2507"
     
     response = await client.chat.completions.create(
         model=model,
@@ -54,7 +54,7 @@ async def transcribe_audio(audio_bytes: bytes, filename: str) -> str:
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": "Please provide a clean transcription of this audio file. Output only the transcript text."},
+                    {"type": "text", "text": "Transcris fidèlement cet enregistrement audio. L'audio est en FRANÇAIS. Ne renvoie que le texte transcrit, sans aucun commentaire, sans markdown et sans introduction."},
                     {
                         "type": "input_audio",
                         "input_audio": {
