@@ -82,6 +82,7 @@ def _parse_json(raw: str):
 # Per-document scoring
 # ---------------------------------------------------------------------------
 
+
 DOCUMENT_SCORE_SYSTEM = """You are an expert HR evaluator scoring a single supplementary document attached to a candidate profile.
 
 DO NOT evaluate the candidate's whole profile. you are ONLY scoring whether THE DOCUMENT_TO_SCORE brings "good news" or "bad news".
@@ -93,26 +94,37 @@ Context provided:
 - The candidate's CV/Profile claims
 - The Current Synthesis (Known Strengths & Weaknesses)
 - All other already-attached documents
+- The candidate's CURRENT TOTAL SCORE
 - The SINGLE NEW DOCUMENT to score
 
 Scoring rules:
 - POSITIVE delta (+0.01 to +0.2): The document proves the candidate possesses a skill REQUIRED BY THE JOB, demonstrates a new strength, OR overcomes a previously identified weakness.
 - NEAR ZERO (0.0): The document is neutral, irrelevant to the job, redundant, or doesn't add meaningful new signal.
-- NEGATIVE delta (-0.01 to -0.2): The document contains an explicit red flag, OR proves the candidate FAILS at a skill required by the job, OR proves a "Strength" from the synthesis/CV is actually false.
+- NEGATIVE delta (-0.01 to -0.2): The document contains an explicit new red flag, OR proves the candidate FAILS at a skill required by the job, OR proves a "Strength" from the synthesis/CV is actually false.
+
+CRITICAL RULE: DIMINISHING RETURNS FOR HIGH SCORES
+- You will receive the "candidate_current_score" (a float between 0.0 and 1.0).
+- If the score is ALREADY VERY HIGH (e.g., above 0.85 or 85%), you MUST BE EXTREMELY HARSH AND CONSERVATIVE.
+- The remaining points to reach 100% represent absolute perfection. If the score is already 90% or 95%, a normal positive document should only give +0.01 or +0.02. To give +0.05 or more at this level, the document MUST demonstrate EXCEPTIONAL, rare, or leadership-level mastery of a critical skill.
+- Conversely, if the score is low (e.g., 0.40), you can be more generous (e.g., +0.10) for finding a required skill.
 
 CRITICAL RULES TO AVOID FALSE PENALTIES:
-- OVERCOMING A WEAKNESS IS POSITIVE: If the synthesis says the candidate lacks a skill (e.g., Spark), and the new document says the candidate is GOOD at it, you MUST give a POSITIVE score. The document is bringing great news.
-- DO NOT PUNISH MISSING INFO: Do not give a negative score just because the document doesn't mention every single job requirement. 
-- NEW SKILLS ARE A BONUS: If the document states the candidate knows a skill that was NOT in the CV or Synthesis, this is a POSITIVE or ZERO score. Do NOT penalize them for knowing extra things.
-- ALIGNMENT WITH THE JOB: Only reward or penalize based on what matters for the job role.
-- ABSENCE OF EVIDENCE IS NOT EVIDENCE OF FAILURE:
-    If the document does NOT mention a required skill, you MUST NOT assume the candidate lacks it.
-    Only assign a negative score if the document explicitly shows failure or contradiction.
+- DO NOT RE-PENALIZE KNOWN WEAKNESSES: If the current synthesis already notes a weakness, DO NOT give a negative score just because the new document doesn't mention it.
+- ONLY JUDGE THE NEW TEXT: If the new document is about Python, judge it on Python. Do not deduct points for unrelated missing skills.
+- OVERCOMING A WEAKNESS IS POSITIVE: If the document shows the candidate is GOOD at a previously flagged weakness, give a POSITIVE score.
+- DO NOT PUNISH MISSING INFO.
+- ABSENCE OF EVIDENCE IS NOT EVIDENCE OF FAILURE.
+
+CRITICAL INSTRUCTION: LANGUAGE
+- All generated text MUST be strictly in French.
+
+CRITICAL INSTRUCTION: OUTPUT FORMAT
+- You MUST output ONLY a pure, valid JSON object. DO NOT wrap the output in markdown blocks like ```json.
 
 Respond ONLY with valid JSON:
 {
   "delta": <float between -0.2 and 0.2>,
-  "rationale": "<One concise sentence explaining your score. Mention how it relates to the job requirements, the CV, or the current synthesis.>"
+  "rationale": "<One concise sentence IN FRENCH explaining your score. Mention how it relates to the job requirements, the CV, or the current synthesis.>"
 }"""
 
 async def score_single_document(
@@ -121,11 +133,14 @@ async def score_single_document(
     document: dict,
     other_docs: list[dict],
     synthesis: dict = None,
+    current_score: float = 0.0,
 ) -> dict:
     """Score a single supplementary document in the context of all other documents.
     Returns {"delta": float, "rationale": str}.
     """
+    print("score;;;;", current_score, flush=True)
     user_content = json.dumps({
+        "candidate_current_score": current_score,
         "job_description": {
             "title": job.get("name", ""),
             "summary": job.get("summary", ""),
@@ -165,50 +180,42 @@ CRITICAL INSTRUCTION: CANDIDATE-CENTRIC SUMMARY
 - The "summary" must analyze the CANDIDATE's profile compared to the job requirements.
 - Do NOT just summarize the job description. Focus entirely on why the candidate is or isn't a good fit.
 
-CRITICAL INSTRUCTION: MANDATORY FIELDS (NO EMPTY ARRAYS)
+CRITICAL INSTRUCTION: MANDATORY FIELDS
 - You MUST provide AT LEAST ONE strength, AT LEAST ONE weakness, and AT LEAST ONE upskilling recommendation.
-- If the candidate seems to match perfectly, you must still find the weakest point, a missing "nice-to-have" skill, or an advanced area for growth to put in "weaknesses" and "upskilling". NEVER return empty arrays.
+- If the candidate seems to match perfectly, you must still find the weakest point, a missing "nice-to-have" skill, or an advanced area for growth. NEVER return empty arrays.
 
 CRITICAL INSTRUCTION: CONTINUITY & UPDATING
-- You will be provided with a "previous_synthesis". 
-- IF "previous_synthesis" is EMPTY or NULL (first time generation): Generate a fresh analysis comparing the candidate's CV/skills directly against the job requirements.
-- IF "previous_synthesis" EXISTS (updating):
+- IF "previous_synthesis" is EMPTY or NULL: Generate a fresh analysis.
+- IF "previous_synthesis" EXISTS:
   1. Use it as your exact starting baseline.
   2. The VERY LAST document in the "extra_documents" array is the NEW evidence.
   3. Evaluate how this NEW evidence changes the baseline.
   4. Retain existing strengths/weaknesses by default.
-  5. If the new document proves the candidate lacks a skill they claimed (e.g., failed a tech test), move it from "strengths" to "weaknesses".
-  6. If a new relevant skill is identified, or if proficiency is demonstrated in a previously weak area, add it to "strengths".
 
 MANDATORY CONSISTENCY UPDATE:
-- If the new document contradicts a previous weakness (e.g., proves the candidate is actually good at it), you MUST:
-1. REMOVE it from "weaknesses"
-2. ADD it to "strengths"
-- If the new document contradicts a previous strength, you MUST:
-1. REMOVE it from "strengths"
-2. ADD it to "weaknesses"
-- STRICT UPDATE RULE (HIGHEST PRIORITY):
-When new evidence resolves a previous weakness, you MUST remove that item from "weaknesses".
-You MUST NOT keep outdated weaknesses under any circumstance.
-- NO CONTRADICTIONS:
-A skill cannot appear as both a strength and a weakness.
-If the summary states a skill is confirmed or strong, it MUST NOT appear in "weaknesses".
-
-GLOBAL CONSISTENCY:
-- The summary, strengths, and weaknesses MUST be fully consistent with each other. If the summary says a weakness is resolved, it MUST NOT still appear in "weaknesses".
+- If new evidence resolves a previous weakness, you MUST REMOVE it from "weaknesses" and ADD it to "strengths".
+- If new evidence contradicts a previous strength, you MUST REMOVE it from "strengths" and ADD it to "weaknesses".
+- NO CONTRADICTIONS: A skill cannot appear as both a strength and a weakness.
 
 RULES FOR FORMATTING:
-- Every item in the "strengths", "weaknesses", and "upskilling" arrays MUST be very short and concise (max 5-7 words).
-- upskilling: concrete learning recommendations directly related to the items in the "weaknesses" array.
+- The summary must consist of multiple sentences, not just a single sentence.
+- Every item in the "strengths", "weaknesses", and "upskilling" arrays MUST be very short phrases (maximum 7 WORDS per item). DO NOT restrict characters or letters, only the number of WORDS.
 
-The summary  must consist of multiple sentences, not just a single sentence
+CRITICAL INSTRUCTION: LANGUAGE
+- All generated text (summary, strengths, weaknesses, upskilling) MUST be written strictly in French.
 
-Respond ONLY with valid JSON — no markdown, no code fences, no extra keys.
+CRITICAL INSTRUCTION: OUTPUT FORMAT
+- You MUST output ONLY a pure, valid JSON object.
+- DO NOT include any reasoning, chain of thought, explanations, or introductory text.
+- DO NOT wrap the output in markdown blocks like ```json.
+- Output MUST start exactly with { and end exactly with }.
+
+Expected JSON schema:
 {
-  "summary": "<2-3 sentence narrative summarizing the CANDIDATE's fit for the job. If a previous synthesis existed, explicitly mention how the newest document impacted the evaluation.>",
-  "strengths": ["<plain string>", ...],
-  "weaknesses": ["<plain string>", ...],
-  "upskilling": ["<plain string>", ...]
+  "summary": "<2-3 sentence narrative IN FRENCH>",
+  "strengths": ["<short phrase IN FRENCH, max 7 words>", ...],
+  "weaknesses": ["<short phrase IN FRENCH, max 7 words>", ...],
+  "upskilling": ["<short phrase IN FRENCH, max 7 words>", ...]
 }"""
 
 async def synthesize_candidate(
@@ -251,6 +258,7 @@ async def synthesize_candidate(
         ensure_ascii=False,
     )
     print(previous_synthesis, flush=True)
+    print("***", user_content, flush=True)
     raw = await _chat(SYNTHESIS_SYSTEM, user_content)
     try:
         data = _parse_json(raw)
@@ -270,18 +278,18 @@ async def synthesize_candidate(
 # Ask — interview question generator
 # ---------------------------------------------------------------------------
 
-ASK_SYSTEM = """You are an expert interviewer. Given a job description, a candidate profile, and supplementary documents (like interview transcripts or technical tests),
-generate targeted interview questions that probe the candidate's fit, technical skills, and motivation.
+ASK_SYSTEM = """You are an expert interviewer. Given a job description, a candidate profile, and supplementary documents, generate targeted interview questions that probe the candidate's fit, technical skills, and motivation.
 
 CRITICAL INSTRUCTIONS:
 1. FOCUS ON THE JOB: Every question must be directly relevant to the specific job title and job description provided.
-2. USE ALL EVIDENCE: Use the candidate's CV/profile AND the extra documents to identify gaps, contradictions, or areas needing deeper investigation relative to the job requirements.
+2. USE ALL EVIDENCE: Use the candidate's CV/profile AND the extra documents to identify gaps, contradictions, or areas needing deeper investigation.
 3. BE SPECIFIC: Avoid generic questions. Refer to specific skills or experiences found in the job description or candidate profile.
+4. LANGUAGE: All questions MUST be written strictly in French.
 
 Respond ONLY with valid JSON:
 {
   "questions": [
-    {"category": "<Technical|Behavioral|Motivation>", "question": "<question text>"},
+    {"category": "<Technique|Comportemental|Motivation>", "question": "<question text IN FRENCH>"},
     ...
   ]
 }"""
@@ -331,23 +339,24 @@ async def generate_questions(job: dict, profile: dict, extra_docs: list[dict] = 
 EMAIL_SYSTEM = """You are an expert HR recruitment specialist. Your goal is to draft a personalized, professional, and engaging email to a candidate based on their profile, the job description, and specific user guidelines.
 
 Your email should:
-1.  STRICTLY FOLLOW the "user_guidelines" provided (e.g., if the user asks for an interview invitation, a rejection, or a technical follow-up, you MUST draft the email accordingly).
-2.  Acknowledge the candidate's specific background and why they caught your eye, using the CV and extra documents for personalization.
-3.  Briefly summarize the job opportunity.
-4.  Be polite, warm, and professional.
-5.  Be concise (under 200 words).
+1. STRICTLY FOLLOW the "user_guidelines" provided.
+2. Acknowledge the candidate's specific background and why they caught your eye.
+3. Briefly summarize the job opportunity.
+4. Be polite, warm, and professional.
+5. Be concise (under 200 words).
+6. LANGUAGE: The entire email (subject and body) MUST be written strictly in French.
 
 Input context provided:
 - Job Title & Description
-- Candidate Name & Profile (skills, experiences)
-- Synthesis analysis (strengths, weaknesses)
-- Extra documents (interview transcripts, tests)
-- User guidelines (specific instructions for this email)
+- Candidate Name & Profile
+- Synthesis analysis
+- Extra documents
+- User guidelines
 
 The output must be strictly valid JSON:
 {
-  "subject": "<Compelling email subject line>",
-  "body": "<Personalized email body, use [Candidate Name] as placeholder if name not provided, but try to use their real name if available. Always sign off from 'HepiR HRevolution team'.>"
+  "subject": "<Compelling email subject line IN FRENCH>",
+  "body": "<Personalized email body IN FRENCH, use [Nom du candidat] as placeholder if name not provided, but try to use their real name if available. Always sign off from 'L'équipe HRévolution'.>"
 }"""
 
 

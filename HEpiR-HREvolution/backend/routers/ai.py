@@ -76,7 +76,9 @@ async def grade_candidate(req: GradeRequest):
             newly_scored = []
             for doc in to_score:
                 other_docs = [d for d in extra_docs if d["id"] != doc["id"]]
-                score_result = await llm.score_single_document(job, profile, doc, other_docs, synthesis_data)
+                current_ai_adj = sum([d.get("delta", 0) for d in already_scored]) + sum([d.get("delta", 0) for d in newly_scored])
+                current_total_score = min(1.0, max(0.0, base_score + current_ai_adj))
+                score_result = await llm.score_single_document(job, profile, doc, other_docs, synthesis_data, current_total_score)
                 newly_scored.append({**doc, "delta": score_result["delta"], "delta_rationale": score_result["rationale"]})
                 print(f"[grade] new doc '{doc.get('filename')}' delta={score_result['delta']} → {score_result['rationale']}", flush=True)
             if newly_scored:

@@ -2,6 +2,8 @@
 
 import io
 import json
+import re 
+from urllib import response
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from services import hrflow, llm
@@ -196,7 +198,10 @@ async def add_document_file(
         
         if ext == "pdf":
             reader = PdfReader(io.BytesIO(content))
-            extracted_text = "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
+            raw_text = "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
+            cleaned = re.sub(r'(?<![.!?:;])\s*\n\s*', ' ', raw_text)
+            cleaned = re.sub(r'\s*\n\s*', '\n\n', cleaned)
+            extracted_text = re.sub(r'[ \t]+', ' ', cleaned).strip()
         elif ext in ["docx", "doc"]:
             # Need to install python-docx
             doc = DocxDocument(io.BytesIO(content))
