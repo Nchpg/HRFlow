@@ -322,8 +322,15 @@ export default function CreateJobModal({ onClose, onSuccess }) {
           <div style={s.footer}>
             <button type="button" className="btn-ghost" onClick={handleClose}>Annuler</button>
             <button type="submit" className="btn-primary"
-              disabled={!form.name.trim() || loading || !!result}>
-              {loading ? '⏳ Création…' : 'Créer le poste'}
+              disabled={!form.name.trim() || loading || !!result}
+              style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+            >
+              {loading ? (
+                <>
+                  <div className="spinner-white" />
+                  <span>Création…</span>
+                </>
+              ) : 'Créer le poste'}
             </button>
           </div>
         </form>

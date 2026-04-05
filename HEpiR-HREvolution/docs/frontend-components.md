@@ -234,7 +234,7 @@ const total = Math.min(1, Math.max(0, base_score + ai_adjustment + bonus))
 Drag & drop or click-to-browse PDF uploader.
 
 **On upload (non-blocking):**
-1. `POST /api/candidates/upload` with `file` + `job_key` — modal shows "⏳ Uploading…" only during parse
+1. `POST /api/candidates/upload` with `file` + `job_key` — modal shows a spinner and "Analyse…" only during parse
 2. On success → calls `onSuccess(data)` immediately — modal closes; grading/synthesis happen in background via `JobView`
 
 The modal does **not** wait for grading or synthesis. The user returns to the candidate list immediately after the PDF is parsed.

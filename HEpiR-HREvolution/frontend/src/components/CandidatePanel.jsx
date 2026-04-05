@@ -720,7 +720,9 @@ function OverviewTab({ profile }) {
   return (
     <>
       <div className="anim-item" style={{ marginBottom: 20, '--item-index': 0 }}>
-        <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 8 }}>Compétences</div>
+        <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 8 }}>
+          Compétence{skills.length > 1 ? 's' : ''} {skills.length > 0 && `(${skills.length})`}
+        </div>
         {skills.length === 0 ? (
           <div style={{ color: 'var(--text-muted)', fontSize: '.8rem' }}>Aucune compétence trouvée</div>
         ) : (
@@ -736,7 +738,9 @@ function OverviewTab({ profile }) {
 
       {experiences.length > 0 && (
         <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 8 }}>Expérience</div>
+          <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 8 }}>
+            Expérience{experiences.length > 1 ? 's' : ''}
+          </div>
           {experiences.map((exp, i) => (
             <div key={i} className="anim-item" style={{ padding: '10px 14px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', marginBottom: 8, '--item-index': i + 1 }}>
               <div style={{ fontWeight: 600, fontSize: '.875rem' }}>{exp.title}</div>
@@ -749,7 +753,9 @@ function OverviewTab({ profile }) {
 
       {educations.length > 0 && (
         <div>
-          <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 8 }}>Formation</div>
+          <div style={{ fontSize: '.75rem', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 8 }}>
+            Formation{educations.length > 1 ? 's' : ''}
+          </div>
           {educations.map((edu, i) => (
             <div key={i} className="anim-item" style={{ padding: '10px 14px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', marginBottom: 8, '--item-index': experiences.length + i + 1 }}>
               <div style={{ fontWeight: 600, fontSize: '.875rem' }}>{edu.title}</div>
@@ -1097,7 +1103,7 @@ function ScoringTab({ hrflowScore, aiAdjustment, bonus, savedBonus, setBonus, on
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>
           {[
-            { label: 'Score HRFlow', value: fmt(hrflowScore) },
+            { label: 'Score Initial', value: fmt(hrflowScore) },
             { label: 'Ajustement IA', value: fmtAdj(aiAdjustment) },
             { label: 'Bonus RH', value: savedBonus > 0 ? `+${savedBonus}%` : `${savedBonus}%` },
             { label: 'Total', value: fmt(totalScore), highlight: true },

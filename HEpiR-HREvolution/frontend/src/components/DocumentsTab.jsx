@@ -231,55 +231,110 @@ const sb = {
 // Voice recorder
 // ---------------------------------------------------------------------------
 
-function VoiceRecorder({ onTranscribed, disabled }) {
-  const [phase, setPhase] = useState('idle') // idle | recording | transcribing
-  const [seconds, setSeconds] = useState(0)
-  const [error, setError] = useState(null)
-  const mediaRecorderRef = useRef(null)
-  const chunksRef = useRef([])
-  const timerRef = useRef(null)
+const IconMic = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+);
 
-  useEffect(() => () => clearInterval(timerRef.current), [])
+const IconSquare = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="5" y="5" rx="2"/></svg>
+);
+
+const IconPaperclip = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.51a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+);
+
+function bufferToWave(abuffer, len) {
+  let numOfChan = abuffer.numberOfChannels,
+    length = len * numOfChan * 2 + 44,
+    buffer = new ArrayBuffer(length),
+    view = new DataView(buffer),
+    channels = [], i, sample,
+    offset = 0, pos = 0;
+
+  const setUint16 = (data) => { view.setUint16(pos, data, true); pos += 2; };
+  const setUint32 = (data) => { view.setUint32(pos, data, true); pos += 4; };
+
+  setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157);
+  setUint32(0x20746d66); setUint32(16); setUint16(1); setUint16(numOfChan);
+  setUint32(abuffer.sampleRate); setUint32(abuffer.sampleRate * 2 * numOfChan);
+  setUint16(numOfChan * 2); setUint16(16); setUint32(0x61746164); setUint32(length - pos - 4);
+
+  for (i = 0; i < numOfChan; i++) channels.push(abuffer.getChannelData(i));
+  while (pos < length) {
+    for (i = 0; i < numOfChan; i++) {
+      sample = Math.max(-1, Math.min(1, channels[i][offset]));
+      sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
+      view.setInt16(pos, sample, true);
+      pos += 2;
+    }
+    offset++;
+  }
+  return new Blob([buffer], { type: "audio/wav" });
+}
+
+function VoiceRecorder({ onTranscribed, disabled }) {
+  const [phase, setPhase] = useState('idle');
+  const [seconds, setSeconds] = useState(0);
+  const [error, setError] = useState(null);
+  const mediaRecorderRef = useRef(null);
+  const chunksRef = useRef([]);
+  const timerRef = useRef(null);
+
+  useEffect(() => () => clearInterval(timerRef.current), []);
 
   const startRecording = async () => {
-    setError(null)
+    setError(null);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const mr = new MediaRecorder(stream)
-      chunksRef.current = []
-      mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data) }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mr = new MediaRecorder(stream);
+      chunksRef.current = [];
+      
+      mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+      
       mr.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop())
-        setPhase('transcribing')
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
-        const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-        const filename = `voice_note_${ts}`
-        const file = new File([blob], `${filename}.webm`, { type: 'audio/webm' })
+        stream.getTracks().forEach((t) => t.stop());
+        setPhase('transcribing');
+        
         try {
-          const result = await transcribeAudio(file)
-          onTranscribed(result.text)
+          // 1. Créer un blob à partir des données WebM enregistrées par le navigateur
+          const webmBlob = new Blob(chunksRef.current, { type: 'audio/webm' });
+          
+          // 2. Convertir WebM -> WAV pour la compatibilité Mistral
+          const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+          const arrayBuffer = await webmBlob.arrayBuffer();
+          const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+          const wavBlob = bufferToWave(audioBuffer, audioBuffer.length);
+          
+          // 3. Envoyer le fichier .wav
+          const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+          const file = new File([wavBlob], `voice_note_${ts}.wav`, { type: 'audio/wav' });
+
+          const result = await transcribeAudio(file);
+          onTranscribed(result.text);
         } catch (e) {
-          setError('La transcription a échoué : ' + e.message)
+          console.error(e);
+          setError('Erreur lors de la transcription ou conversion.');
         } finally {
-          setPhase('idle')
+          setPhase('idle');
         }
-      }
-      mr.start()
-      mediaRecorderRef.current = mr
-      setPhase('recording')
-      setSeconds(0)
-      timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000)
-    } catch {
-      setError('Accès au microphone refusé ou indisponible.')
+      };
+
+      mr.start();
+      mediaRecorderRef.current = mr;
+      setPhase('recording');
+      setSeconds(0);
+      timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
+    } catch (err) {
+      setError('Accès au microphone refusé.');
     }
-  }
+  };
 
   const stopRecording = () => {
     if (mediaRecorderRef.current && phase === 'recording') {
-      mediaRecorderRef.current.stop()
-      clearInterval(timerRef.current)
+      mediaRecorderRef.current.stop();
+      clearInterval(timerRef.current);
     }
-  }
+  };
 
   const fmt = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
 
@@ -291,8 +346,9 @@ function VoiceRecorder({ onTranscribed, disabled }) {
           onClick={startRecording}
           disabled={disabled}
           title="Enregistrer une note vocale — la transcription apparaîtra dans la zone de texte pour modification"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
         >
-          🎙 Enregistrer
+          <IconMic /> Enregistrer
         </button>
       )}
       {phase === 'recording' && (
@@ -304,9 +360,15 @@ function VoiceRecorder({ onTranscribed, disabled }) {
           <button
             className="btn-secondary"
             onClick={stopRecording}
-            style={{ borderColor: '#e01e5a', color: '#e01e5a' }}
+            style={{ 
+              borderColor: '#e01e5a', 
+              color: '#e01e5a', 
+              display: 'inline-flex', 
+              alignItems: 'center', 
+              gap: '6px' 
+            }}
           >
-            ⏹ Arrêter
+            <IconSquare /> Arrêter
           </button>
         </>
       )}
@@ -406,8 +468,9 @@ function DocumentInput({ onSend, onUploadFile }) {
             onClick={() => fileInputRef.current?.click()}
             disabled={sending}
             title="Télécharger audio (mp3, m4a, wav), texte (pdf, docx, txt)"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
           >
-            📎 {sending ? '...' : 'Télécharger le fichier'}
+          <IconPaperclip /> {sending ? '...' : 'Télécharger le fichier'}
           </button>
           <VoiceRecorder onTranscribed={handleTranscribed} disabled={sending} />
           <span style={si.hint}>Ctrl+Entrée pour envoyer</span>

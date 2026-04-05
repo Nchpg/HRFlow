@@ -157,8 +157,14 @@ export default function UploadResumeModal({ job, onClose, onSuccess }) {
             className="btn-primary"
             onClick={handleUpload}
             disabled={!file || loading}
+            style={{ display: 'flex', alignItems: 'center', gap: 8 }}
           >
-            {loading ? '⏳ Analyse…' : 'Télécharger et analyser'}
+            {loading ? (
+              <>
+                <div className="spinner-white" />
+                <span>Analyse…</span>
+              </>
+            ) : 'Télécharger et analyser'}
           </button>
         </div>
       </div>
