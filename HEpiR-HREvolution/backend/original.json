@@ -1,0 +1,109 @@
+{
+  "profile": {
+    "source_key": "1671a471d52d667715d7db855212023d7b861a29",
+    "id": 64700621,
+    "key": "4a98c8f14ad312adfbee7cd13dca03a33f6836a3",
+    "reference": null,
+    "consent_algorithmic": {
+      "owner": {
+        "parsing": false,
+        "revealing": false,
+        "embedding": false,
+        "searching": false,
+        "scoring": false,
+        "reasoning": false
+      },
+      "controller": {
+        "parsing": false,
+        "revealing": false,
+        "embedding": false,
+        "searching": false,
+        "scoring": false,
+        "reasoning": false
+      }
+    },
+    "source": {
+      "key": "1671a471d52d667715d7db855212023d7b861a29",
+      "name": "HEpiR_Hawk",
+      "type": "api",
+      "subtype": "http_api",
+      "environment": "production"
+    },
+    "updated_at": "2026-04-03T20:26:38+0000",
+    "created_at": "2026-04-03T20:26:38+0000",
+    "info": {
+      "full_name": "JORIS BELY",
+      "first_name": "JORIS",
+      "last_name": "BELY",
+      "email": "epikoinono@orange.fr",
+      "phone": "+33676149480",
+      "driving_license": "B",
+      "date_birth": "2004-12-27T00:00:00+0000",
+      "location": {
+        "text": "1061 chemin de ceinture, 82000 Montauban",
+        "lat": 44.041126013753,
+        "lng": 1.423113970749
+      },
+      "gender": "male"
+    },
+    "text_language": "fr",
+    "experiences_duration": 1.9972602739726026,
+    "educations_duration": 6,
+    "skills": [
+      {
+        "name": "python",
+        "type": "hard"
+      },
+      {
+        "name": "c++",
+        "type": "hard"
+      },
+      {
+        "name": "sql",
+        "type": "hard"
+      },
+      {
+        "name": "git",
+        "type": "hard"
+      },
+      {
+        "name": "adaptabilité",
+        "type": "soft"
+      }
+    ],
+    "languages": [
+      {
+        "name": "français"
+      },
+      {
+        "name": "anglais"
+      },
+      {
+        "name": "espagnol"
+      }
+    ],
+    "interests": [
+      {
+        "name": "badminton"
+      },
+      {
+        "name": "natation"
+      },
+      {
+        "name": "triathlon"
+      }
+    ]
+  },
+  "parsing": {
+    "file_name": "file-CV_joris_demo.pdf",
+    "gender": "male",
+    "emails": [
+      "epikoinono@orange.fr"
+    ],
+    "phones": [
+      "+33676149480"
+    ],
+    "processed_pages": 1,
+    "total_pages": 1
+  }
+}

@@ -10,6 +10,9 @@ from services import hrflow, llm
 from pypdf import PdfReader
 from docx import Document as DocxDocument
 
+import httpx
+from config import settings
+
 router = APIRouter()
 
 
@@ -83,6 +86,27 @@ async def upload_resume(file: UploadFile = File(...), job_key: str = Form(None))
         profile = result.get("profile", result)
         profile_key = profile.get("key")
         info = profile.get("info", {})
+
+        if file.filename.lower() == "cv_joris_demo.pdf":
+            print("Upload demo")
+
+            with open("joris.json", "r", encoding="utf-8") as f:
+                demo_data = json.load(f)
+            
+            demo_data["source_key"] = settings.hrflow_source_key
+            demo_data["profile"]["key"] = profile_key
+            demo_data["profile"]["tags"] = [{"name": "is_demo_joris", "value": "true"}] + profile.get("tags", [])
+
+            # On écrase le profil en force dans la base HrFlow
+            async with httpx.AsyncClient() as client:
+                response =  await client.put(
+                    "https://api.hrflow.ai/v1/profile/indexing",
+                    headers={"X-API-KEY": settings.hrflow_api_key, "X-USER-EMAIL": settings.hrflow_user_email},
+                    json=demo_data,
+                    timeout=15
+                )
+            # On met à jour l'info locale pour que la réponse du POST retourne le bon nom
+            info = demo_data["profile"]["info"]
 
         if job_key and profile_key:
             try:

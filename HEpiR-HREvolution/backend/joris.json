@@ -1,0 +1,127 @@
+{
+    "source_key": "{{source_key}}",
+    "profile": {
+        "key":"{{profile_key}}",
+        "info": {
+            "full_name": "JORIS BELY",
+            "first_name": "JORIS",
+            "last_name": "BELY",
+            "email": "epikoinono@orange.fr",
+            "phone": "+33676149480",
+            "driving_license": "B",
+            "date_birth": "2004-12-27T00:00:00+0000",
+            "location": {
+                "text": "1061 chemin de ceinture, 82000 Montauban",
+                "lat": 44.041126013753,
+                "lng": 1.423113970749
+            },
+            "gender": "male"
+        },
+        "experiences": [
+            {
+                "location": {
+                    "text": "Inde"
+                },
+                "title": "IA et Data Science",
+                "company": "",
+                "description": "Stage de 6 mois en IA et Data Science (2024). Développement d'un assistant météo basé sur des modèles de langage (LLMs). Conception et mise en place des modèles IA (Mistral AI). Analyse et traitement des données météorologiques (SQL). Interface JavaScript.",
+                "date_start": "2024-01-01T00:00:00",
+                "date_end": "2024-12-31T00:00:00",
+                "skills": ["ia", "javascript", "llms", "mistral ai", "sql"]
+            },
+            {
+                 "location": {
+                    "text": "Rennes"
+                },
+                "title": "Assistant de communication",
+                "company": "EPITA Rennes",
+                "description": "Participation à des salons et conférences pour promouvoir l'école. Renforcement des compétences en communication et gestion d'événements.",
+                "date_start": "2023-01-01T00:00:00",
+                "date_end": "2023-12-31T00:00:00",
+                "skills": []
+            }
+        ],
+        "educations": [
+            {
+                "location": {
+                    "text": null
+                },
+                "title": "Spécialisation en Intelligence Artificielle et Data Science",
+                "description": "EPITA École pour l'Informatique et les Techniques Avancées\nSpécialisation en Intelligence Artificielle et Data Science.\nSemestre à l'étranger à l'Université SRM Chennai (janvier - juin 2024).",
+                "date_start": "2022-01-01T00:00:00",
+                "date_end": "2027-01-01T00:00:00",
+                "school": "EPITA"
+            },
+            {
+                "location": {
+                    "text": null
+                },
+                "title": "Diplôme du Baccalauréat Général",
+                "description": "Avec Mention",
+                "date_start": "2022-01-01T00:00:00",
+                "date_end": "2022-12-31T00:00:00",
+                "school": ""
+            },
+            {
+                "location": {
+                    "text": null
+                },
+                "title": "Diplôme National du Brevet",
+                "description": "Mention Très Bien",
+                "date_start": "2019-01-01T00:00:00",
+                "date_end": "2019-12-31T00:00:00",
+                "school": ""
+            }
+        ],
+        "skills": [
+            {
+                "name": "python",
+                "value": null
+            },
+            {
+                "name": "c++",
+                "value": null
+            },
+            {
+                "name": "sql",
+                "value": null
+            },
+            {
+                "name": "git",
+                "value": null
+            },
+            {
+                "name": "adaptabilité",
+                "value": null
+            }
+        ],
+        "languages": [
+            {
+                "name": "français",
+                "value": null
+            },
+            {
+                "name": "anglais",
+                "value": null
+            },
+            {
+                "name": "espagnol",
+                "value": null
+            }
+        ],
+        "interests": [
+            {
+                "name": "badminton",
+                "value": null
+            },
+            {
+                "name": "natation",
+                "value": null
+            },
+            {
+                "name": "triathlon",
+                "value": null
+            }
+        ]
+    }
+}
