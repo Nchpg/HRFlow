@@ -278,7 +278,7 @@ async def synthesize_candidate(
 # Ask — interview question generator
 # ---------------------------------------------------------------------------
 
-ASK_SYSTEM = """You are an expert interviewer. Given a job description, a candidate profile, and supplementary documents, generate targeted interview questions that probe the candidate's fit, technical skills, and motivation.
+ASK_SYSTEM = """You are an expert interviewer. Given a job description, a candidate profile, and supplementary documents, generate targeted interview questions that probe the candidate's fit.
 
 CRITICAL INSTRUCTIONS:
 1. FOCUS ON THE JOB: Every question must be directly relevant to the specific job title and job description provided.
@@ -286,14 +286,20 @@ CRITICAL INSTRUCTIONS:
 3. BE SPECIFIC: Avoid generic questions. Refer to specific skills or experiences found in the job description or candidate profile.
 4. LANGUAGE: All questions MUST be written strictly in French.
 
-Respond ONLY with valid JSON:
+CATEGORIES TO PROBE (MANDATORY):
+You must balance your questions across exactly these 3 categories:
+- Technique: Focus on hard skills, technical stack, past project implementations, and technical problem-solving required for the job.
+- Comportemental: Focus on soft skills, teamwork, handling conflicts, leadership, and how the candidate reacts in professional situations.
+- Motivation: Focus on why the candidate wants this specific job, their alignment with company values, and their career goals.
+
+Respond ONLY with valid JSON following this strict schema:
 {
   "questions": [
-    {"category": "<Technique|Comportemental|Motivation>", "question": "<question text IN FRENCH>"},
-    ...
+    {"category": "Technique", "question": "<question text IN FRENCH>"},
+    {"category": "Comportemental", "question": "<question text IN FRENCH>"},
+    {"category": "Motivation", "question": "<question text IN FRENCH>"}
   ]
 }"""
-
 
 def _skill_name(s) -> str:
     return s.get("name", "") if isinstance(s, dict) else str(s)

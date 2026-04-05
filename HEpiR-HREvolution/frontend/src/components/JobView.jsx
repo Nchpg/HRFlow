@@ -449,7 +449,7 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
         </div>
 
         <select
-          style={{ ...s.searchInput, paddingLeft: 10, width: 140, cursor: 'pointer' }}
+          style={{ ...s.searchInput, paddingLeft: 10, width: 160, cursor: 'pointer' }}
           value={stageFilter}
           onChange={(e) => setStageFilter(e.target.value)}
         >
