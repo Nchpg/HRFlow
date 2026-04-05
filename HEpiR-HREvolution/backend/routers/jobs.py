@@ -63,7 +63,7 @@ async def get_init_data():
         # Parallel fetch for everything
         jobs_task = hrflow.list_jobs(use_cache=False)
         trackings_task = hrflow.list_all_trackings()
-        profiles_task = hrflow.list_all_profiles(limit=100) # Get last 100 profiles with tags
+        profiles_task = hrflow.list_all_profiles(limit=300) # Get last 300 profiles with tags
         
         jobs, trackings, profiles = await asyncio.gather(jobs_task, trackings_task, profiles_task)
         
@@ -117,7 +117,8 @@ async def get_init_data():
 
         for jk, cands in candidates_by_job.items():
             cands.sort(key=lambda c: (c["score"] is not None, c["score"] or 0), reverse=True)
-            hrflow._set_cached(f"job_candidates_{jk}", cands)
+            # We don't set the cache here anymore because data might be incomplete (missing profile pictures/names)
+            # hrflow._set_cached(f"job_candidates_{jk}", cands) 
 
         return {
             "jobs": jobs,
