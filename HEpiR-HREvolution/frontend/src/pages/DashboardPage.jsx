@@ -206,6 +206,10 @@ export default function DashboardPage() {
         }}
         onProcessingChange={setProcessing}
         onJobStatusChange={handleJobStatusChange}
+        onJobBlacklisted={() => {
+          setSelectedJob(null)
+          fetchJobs()
+        }}
         onScoreReady={(scoreData) => {
           if (scoreData)
             setCandidateOverride({ profileKey: scoreData.profileKey || selectedCandidate?.profile_key, ...scoreData })
@@ -234,6 +238,9 @@ export default function DashboardPage() {
           onStageChange={handleCandidateStageChange}
           onBonusSaved={(bonusDecimal) => {
             setCandidateOverride({ profileKey: selectedCandidate.profile_key, bonus: bonusDecimal })
+          }}
+          onBlacklisted={() => {
+            setCandidateRefreshKey(k => k + 1)
           }}
         />
       )}

@@ -24,6 +24,11 @@ def load_blacklist() -> dict:
         return {"jobs": [], "profiles": []}
 
 
+def _clear_cache() -> None:
+    """Clear all entries in the cache."""
+    _CACHE.clear()
+
+
 def _get_cached(key: str):
     return _CACHE.get(key)
 

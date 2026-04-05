@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { getCandidate, synthesizeCandidate, getStoredSynthesis, updateBonus, getJobStages, updateCandidateStage, generateEmail, getExtraDocuments } from '../services/api'
+import { getCandidate, synthesizeCandidate, getStoredSynthesis, updateBonus, getJobStages, updateCandidateStage, generateEmail, getExtraDocuments, addToBlacklist } from '../services/api'
 import AskAssistant from './AskAssistant'
 import DocumentsTab from './DocumentsTab'
 
@@ -194,13 +194,29 @@ function translateStage(stage, labels = []) {
   return stage.replace(/_/g, ' ')
 }
 
-export default function CandidatePanel({ candidateRef, job, onClose, onProcessingChange, onScoreReady, onSynthesisReady, processingStatus, onBonusSaved, onStageChange }) {
+export default function CandidatePanel({ candidateRef, job, onClose, onProcessingChange, onScoreReady, onSynthesisReady, processingStatus, onBonusSaved, onStageChange, onBlacklisted }) {
   const [closing, setClosing] = useState(false)
+  const [blacklisting, setBlacklisting] = useState(false)
 
   function handleClose() {
     if (closing) return
     setClosing(true)
     setTimeout(onClose, 280)
+  }
+
+  const handleBlacklist = async () => {
+    if (!window.confirm("Voulez-vous vraiment blacklister ce candidat ? Il ne sera plus visible.")) return
+    setBlacklisting(true)
+    try {
+      await addToBlacklist('profiles', candidateRef.profile_key)
+      onBlacklisted?.(candidateRef.profile_key)
+      handleClose()
+    } catch (e) {
+      console.error(e)
+      alert("Erreur lors de l'ajout à la blacklist")
+    } finally {
+      setBlacklisting(false)
+    }
   }
 
   const [profile, setProfile] = useState(null)
@@ -405,6 +421,16 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
             <div style={s.headerInfo}>
               <div style={s.name}>{fullName || candidateRef.profile_key}</div>
               <div style={s.email}>{info.email || candidateRef.email || ''}</div>
+              <div style={{ marginTop: 8, display: 'flex', gap: 10 }}>
+                <button
+                  className="btn-ghost"
+                  style={{ color: '#d32f2f', fontSize: '.75rem', padding: '2px 8px', border: '1px solid #d32f2f' }}
+                  onClick={handleBlacklist}
+                  disabled={blacklisting}
+                >
+                  {blacklisting ? '…' : 'Blacklister'}
+                </button>
+              </div>
               <div style={{ marginTop: 6, display: 'flex', gap: 8, alignItems: 'center' }}>
                 <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span className={`score-badge ${scoreBadgeClass(totalScore)}`}>

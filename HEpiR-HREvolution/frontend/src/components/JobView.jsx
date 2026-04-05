@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { getJobCandidates, getCandidate, gradeCandidate, synthesizeCandidate, getJobStages } from '../services/api'
+import { getJobCandidates, getCandidate, gradeCandidate, synthesizeCandidate, getJobStages, addToBlacklist } from '../services/api'
 import { storage } from '../services/storage'
 import UploadResumeModal from './UploadResumeModal'
 import JobInfoModal from './JobInfoModal'
@@ -187,10 +187,26 @@ function translateStage(stage, labels = {}) {
   return stage.replace(/_/g, ' ')
 }
 
-export default function JobView({ job, onSelectCandidate, processingProfiles = {}, refreshKey = 0, selectedProfileKey, onCandidateRefreshed, onProcessingChange, onJobStatusChange, candidateOverride, onScoreReady, onSynthesisReady }) {
+export default function JobView({ job, onSelectCandidate, processingProfiles = {}, refreshKey = 0, selectedProfileKey, onCandidateRefreshed, onProcessingChange, onJobStatusChange, candidateOverride, onScoreReady, onSynthesisReady, onJobBlacklisted }) {
   const [candidates, setCandidates] = useState([])
   const [loading, setLoading] = useState(false)
+  const [blacklisting, setBlacklisting] = useState(false)
   const [search, setSearch] = useState('')
+  // ...
+  
+  const handleBlacklistJob = async () => {
+    if (!window.confirm("Voulez-vous vraiment blacklister ce poste ? Il ne sera plus visible.")) return
+    setBlacklisting(true)
+    try {
+      await addToBlacklist('jobs', job.key)
+      onJobBlacklisted?.(job.key)
+    } catch (e) {
+      console.error(e)
+      alert("Erreur lors de l'ajout à la blacklist")
+    } finally {
+      setBlacklisting(false)
+    }
+  }
   const [hovered, setHovered] = useState(null)
   const [stageFilter, setStageFilter] = useState('all')
   const [showUpload, setShowUpload] = useState(false)
@@ -430,6 +446,14 @@ export default function JobView({ job, onSelectCandidate, processingProfiles = {
           </button>
           <button className="btn-secondary" onClick={() => setShowStageManager(true)}>
             Processus
+          </button>
+          <button
+            className="btn-secondary"
+            style={{ color: '#d32f2f', borderColor: '#d32f2f' }}
+            onClick={handleBlacklistJob}
+            disabled={blacklisting}
+          >
+            {blacklisting ? '…' : 'Blacklister'}
           </button>
           <button className="btn-primary" onClick={() => setShowUpload(true)} disabled={loading}>
             Ajouter un candidat
