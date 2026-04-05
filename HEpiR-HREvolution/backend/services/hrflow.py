@@ -2,13 +2,26 @@
 
 import logging
 import httpx
+import os
+import json
 from config import settings
 
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://api.hrflow.ai/v1"
+BLACKLIST_FILE = "blacklist.json"
 
 _CACHE: dict = {}
+
+
+def load_blacklist() -> dict:
+    if not os.path.exists(BLACKLIST_FILE):
+        return {"jobs": [], "profiles": []}
+    try:
+        with open(BLACKLIST_FILE, "r") as f:
+            return json.load(f)
+    except Exception:
+        return {"jobs": [], "profiles": []}
 
 
 def _get_cached(key: str):
@@ -52,6 +65,11 @@ async def list_jobs(limit: int = 30, page: int = 1, use_cache: bool = True) -> l
         r.raise_for_status()
         data = r.json()
         jobs = (data.get("data") or {}).get("jobs", [])
+        
+        # Filter blacklisted jobs
+        blacklist = load_blacklist()
+        jobs = [j for j in jobs if j.get("key") not in blacklist.get("jobs", [])]
+
         # Enrich with status from tags
         for job in jobs:
             status_tag = extract_tag(job, "job_status")
@@ -191,11 +209,23 @@ async def list_trackings(job_key: str) -> list[dict]:
         # The new endpoint returns the list in 'data' directly.
         # The old endpoint returned it in 'data.trackings'.
         data_content = data.get("data")
+        trackings = []
         if isinstance(data_content, list):
-            return data_content
-        if isinstance(data_content, dict):
-            return data_content.get("trackings") or []
-        return []
+            trackings = data_content
+        elif isinstance(data_content, dict):
+            trackings = data_content.get("trackings") or []
+        
+        # Filter blacklisted profiles/jobs
+        blacklist = load_blacklist()
+        filtered = []
+        for t in trackings:
+            p_key = t.get("profile_key") or t.get("profile", {}).get("key")
+            j_key = t.get("job_key") or t.get("job", {}).get("key")
+            if p_key in blacklist.get("profiles", []) or j_key in blacklist.get("jobs", []):
+                continue
+            filtered.append(t)
+        
+        return filtered
 
 
 async def get_tracking(job_key: str, profile_key: str) -> dict | None:
@@ -240,7 +270,13 @@ async def list_all_profiles(limit: int = 100) -> list[dict]:
             print(f"list_all_profiles → {r.status_code}: {r.text}", flush=True)
             return []
         data = r.json()
-        return (data.get("data") or {}).get("profiles", [])
+        profiles = (data.get("data") or {}).get("profiles", [])
+        
+        # Filter blacklisted profiles
+        blacklist = load_blacklist()
+        profiles = [p for p in profiles if p.get("key") not in blacklist.get("profiles", [])]
+        
+        return profiles
 
 
 # ---------------------------------------------------------------------------

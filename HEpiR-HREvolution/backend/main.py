@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import jobs, candidates, ai
+from routers import jobs, candidates, ai, blacklist
 
 app = FastAPI(title="HRFlow Hackathon API", version="1.0.0", redirect_slashes=False)
 
@@ -16,6 +16,7 @@ app.add_middleware(
 app.include_router(jobs.router, prefix="/api/jobs", tags=["jobs"])
 app.include_router(candidates.router, prefix="/api/candidates", tags=["candidates"])
 app.include_router(ai.router, prefix="/api/ai", tags=["ai"])
+app.include_router(blacklist.router, prefix="/api/blacklist", tags=["blacklist"])
 
 
 @app.get("/health")

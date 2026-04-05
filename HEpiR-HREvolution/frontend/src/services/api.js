@@ -127,3 +127,8 @@ export async function uploadExtraDocumentFile(profileKey, jobKey, file) {
   cache.clear()
   return res.json()
 }
+
+// ── Blacklist ─────────────────────────────────────────────────────────────
+export const getBlacklist = () => request('GET', '/blacklist')
+export const addToBlacklist = (type, key) => request('POST', `/blacklist/${type}`, { key })
+export const removeFromBlacklist = (type, key) => request('DELETE', `/blacklist/${type}/${key}`)
