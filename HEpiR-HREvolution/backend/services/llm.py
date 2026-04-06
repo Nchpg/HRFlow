@@ -54,7 +54,16 @@ async def transcribe_audio(audio_bytes: bytes, filename: str) -> str:
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": "Transcris fidèlement cet enregistrement audio. L'audio est en FRANÇAIS. Ne renvoie que le texte transcrit, sans aucun commentaire, sans markdown et sans introduction."},
+                    {"type": "text", "text": 
+                        (
+                            "Tu es un transcripteur de haute précision. "
+                            "Transcris fidèlement cet enregistrement audio en FRANÇAIS. "
+                            "REGLE CRITIQUE : Si l'audio est silencieux, ne contient que du bruit, "
+                            "ou n'a pas de parole humaine intelligible, réponds par : '---SILENCE---'. "
+                            "Ne génère JAMAIS de texte de remplissage ou d'exemple. "
+                            "Ne renvoie que le texte transcrit ou le mot-clé, sans commentaire, sans markdown et sans introduction."
+                        )
+                    },
                     {
                         "type": "input_audio",
                         "input_audio": {

@@ -1279,9 +1279,25 @@ function EmailTab({ job, candidateRef }) {
               className="btn-secondary" 
               onClick={handleGenerate} 
               disabled={loading}
-              style={{ flex: 1 }}
+              style={{ 
+                flex: 1, 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center', 
+                gap: '8px',
+                // Petit effet de bordure dégradée pour le côté "IA"
+                border: '1px solid #1264a3',
+                position: 'relative',
+                fontWeight: 600
+              }}
             >
-              {loading ? <div className="spinner" style={{ width: 14, height: 14, border: '2px solid #666', borderTopColor: 'transparent' }} /> : 'Générer avec l\'IA'}
+              {loading ? (
+                <div className="spinner" style={{ width: 14, height: 14, border: '2px solid #666', borderTopColor: 'transparent' }} />
+              ) : (
+                <>
+                  Générer avec l'IA
+                </>
+              )}
             </button>
             <button 
               className="btn-primary" 
