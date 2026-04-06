@@ -15,10 +15,28 @@
                 "lat": 47.2182641,
                 "lng": -1.5571805
             },
-            "picture": "https://riminder-documents-eu-2019-12.s3-eu-west-1.amazonaws.com/teams/ea8d9da71d97b07d00831aab2a30e90e32122b12/sources/1671a471d52d667715d7db855212023d7b861a29/profiles/2423be7796fcbb37542294b66353f73f9851201c/parsing/picture.png",
+            "urls": [
+                {
+                    "type": "linkedin",
+                    "url": "linkedin.com/in/julien-roche"
+                },
+                {
+                    "type": "linkedin",
+                    "url": "https://linkedin.com/in/julienroche"
+                },
+                {
+                    "type": "github",
+                    "url": "https://github.com/jroche"
+                }
+            ],
+            "picture": "https://riminder-documents-eu-2019-12.s3-eu-west-1.amazonaws.com/teams/ea8d9da71d97b07d00831aab2a30e90e32122b12/sources/1671a471d52d667715d7db855212023d7b861a29/profiles/d6eaa0f84ab69fcea03a3f6dc599de2ef75029d7/parsing/picture.png",
             "gender": "male",
             "summary": "Développeur Fullstack Confirmé | Expert JavaScript (React / Node.js) Méthodes Agiles.\nSpécialiste de la livraison de fonctionnalités de bout en bout avec une forte sensibilité UX/UI."
         },
+        "text_language": "fr",
+        "text": "Julien Roche\n\n33 ans\n\nNantes (44000)\n\n06 00 00 00 00\n\njulien.roche@gmail.com\n\nin linkedin.com/in/julien-roche\n\ngithub.com/jroche\n\nDéveloppeur Fullstack Confirmé | Expert JavaScript (React / Node.js) Méthodes Agiles.\nSpécialiste de la livraison de fonctionnalités de bout en bout avec une forte sensibilité UX/UI.\n\n✰ EXPÉRIENCES PROFESSIONNELLES\n\nDéveloppeur Fullstack\nStartup \"SmartRent\" (PropTech)\n\nAvril 2019\n\nPrésent\n\nNantes\n\nArchitecture SaaS : Développement d'une plateforme de gestion locative automatisée.\nFrontend Création d'interfaces utilisateur dynamiques et complexes avec React.js et Redux Toolkit.\nBackend: Conception de micro-services sous Node.js (Express) pour la gestion des baux et des flux financiers.\nIntégration Fintech Implémentation de Stripe (paiements récurrents) et DocuSign (signatures électroniques\nsécurisées).\nData & Ops: Maintenance de bases de données PostgreSQL et déploiement continu via GitHub Actions sur\nAWS (S3, EC2).\nRéalisation marquante: Refonte complète du tunnel de dépôt de dossier réduction du taux d'abandon de\n25% via l'optimisation de la fluidité de l'interface.\n\nDéveloppeur Web Junior (Stage & CDD)\nAgence Web \"DigitalNantes\"\n\nDéveloppement de sites vitrines et e-commerce sur-mesure (JavaScript, PHP/SQL).\nIntégration responsive respectant les normes d'accessibilité web.\n\nCOMPÉTENCES TECHNIQUES\n\nFrontend: React, JavaScript (ES6+), HTML5/CSS3, Sass, Tailwind CSS, Bootstrap.\nBackend: Node.js, Express, SQL (PostgreSQL), NoSQL (MongoDB), REST APIs.\nDevOps & Outils Git, Docker, AWS (S3, EC2), GitHub Actions, Jest (Tests unitaires).\nMéthodologie: Scrum, Kanban, Code Review, Pair Programming.\n\nFORMATION\n\n2016 - 2018\n\n2013 2016\n\nMaster Informatique & Innovation Numérique\nÉcole IMT Atlantique (Nantes)\n\nLicence Informatique\nUniversité de Nantes\n\n* CENTRES D'INTÉRÊT\n\n▸ Veille Tech Nantes Digital Week, frameworks CSS\n(émergents), UI/UX Design.\nLoisirs Pratique intensive du Squash.\n▸ Passion Brassage artisanal (bières locales).\n\nVOYAGES & LANGUES\n\n2017-2018\nNantes\n\nLangues Anglais (Technique), Français (Maternel).\n▸ Voyages: Sac à dos (Asie du Sud-Est, Europe de l'Est).\nAtouts Autonomie, Sens du produit, Adaptabilité.\n\n1",
+        "experiences_duration": 1.0794520547945,
+        "educations_duration": 5.0027397260274,
         "experiences": [
             {
             "location": {
@@ -63,6 +81,30 @@
             "date_start": "2013-01-01T00:00:00",
             "date_end": "2016-12-31T00:00:00",
             "school": "Université de Nantes"
+            }
+        ],
+        "attachments": [
+            {
+                "type": "original",
+                "alt": "0ec1f034a7f608d9804fdca2dde6656beb258442",
+                "file_size": 229237,
+                "file_name": "original",
+                "original_file_name": "CV_Julien_Roche_Demo.pdf",
+                "extension": ".pdf",
+                "public_url": "https://riminder-documents-eu-2019-12.s3-eu-west-1.amazonaws.com/teams/ea8d9da71d97b07d00831aab2a30e90e32122b12/sources/1671a471d52d667715d7db855212023d7b861a29/profiles/d6eaa0f84ab69fcea03a3f6dc599de2ef75029d7/parsing/original.pdf",
+                "updated_at": "2026-04-05T22:15:13+0000",
+                "created_at": "2026-04-05T22:15:13+0000"
+            },
+            {
+                "type": "resume",
+                "alt": "36eda1f83fc5d2103af9d06e3bd318fff0c08dcb",
+                "file_size": 252961,
+                "file_name": "resume",
+                "original_file_name": "CV_Julien_Roche_Demo.pdf",
+                "extension": ".pdf",
+                "public_url": "https://riminder-documents-eu-2019-12.s3-eu-west-1.amazonaws.com/teams/ea8d9da71d97b07d00831aab2a30e90e32122b12/sources/1671a471d52d667715d7db855212023d7b861a29/profiles/d6eaa0f84ab69fcea03a3f6dc599de2ef75029d7/parsing/resume.pdf",
+                "updated_at": "2026-04-05T22:15:13+0000",
+                "created_at": "2026-04-05T22:15:13+0000"
             }
         ],
         "skills": [
@@ -153,6 +195,38 @@
                 "value": null
             } 
         ],
+        "certifications": [],
+        "courses": [],
+        "tasks": [
+            {
+                "name": "conception de micro-services",
+                "value": null
+            },
+            {
+                "name": "création d'interfaces utilisateur dynamiques et complexes",
+                "value": null
+            },
+            {
+                "name": "développement d'une plateforme de gestion locative automatisée",
+                "value": null
+            },
+            {
+                "name": "développement de sites vitrines et e-commerce sur-mesure",
+                "value": null
+            },
+            {
+                "name": "gestion des baux et des flux financiers",
+                "value": null
+            },
+            {
+                "name": "intégration responsive respectant les normes d'accessibilité web",
+                "value": null
+            },
+            {
+                "name": "refonte complète du tunnel de dépôt de dossier réduction du taux d'abandon de 25% via l'optimisation de la fluidité de l'interface",
+                "value": null
+            }
+        ],
         "interests": [
             {
                 "name": "squash",
@@ -162,6 +236,7 @@
                 "name": "bière locale",
                 "value": null
             }
-        ]
+        ],
+        "labels": []
     }
 }

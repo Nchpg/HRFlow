@@ -4,6 +4,9 @@ import io
 import json
 import re 
 from urllib import response
+import uuid
+
+from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from services import hrflow, llm
@@ -99,32 +102,55 @@ async def upload_resume(file: UploadFile = File(...), job_key: str = Form(None))
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are accepted.")
     try:
-        content = await file.read()
-        result = await hrflow.parse_resume_file(content, file.filename)
-        profile = result.get("profile", result)
-        profile_key = profile.get("key")
-        info = profile.get("info", {})
-
         if file.filename.lower() == "CV_Julien_Roche_Demo.pdf".lower():
             print("Upload demo")
 
             with open("demo.json", "r", encoding="utf-8") as f:
                 demo_data = json.load(f)
+
+            if "key" in demo_data["profile"]:
+                del demo_data["profile"]["key"]
             
             demo_data["source_key"] = settings.hrflow_source_key
-            demo_data["profile"]["key"] = profile_key
-            demo_data["profile"]["tags"] = [{"name": "is_demo", "value": "true"}] + profile.get("tags", [])
+            demo_data["profile"]["tags"] = [{"name": "is_demo", "value": "true"}]
+            now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S+0000")
+
+            for attachment in demo_data['profile']['attachments']:
+                attachment["updated_at"] = now
+                attachment["created_at"] = now
+
 
             # On écrase le profil en force dans la base HrFlow
             async with httpx.AsyncClient() as client:
-                response =  await client.put(
+                response =  await client.post(
                     "https://api.hrflow.ai/v1/profile/indexing",
                     headers={"X-API-KEY": settings.hrflow_api_key, "X-USER-EMAIL": settings.hrflow_user_email},
                     json=demo_data,
                     timeout=15
                 )
+                print(f"Demo profile indexing response: {response.status_code} - {response.text}", flush=True)
+
+            profile_key = response.json()["data"]["key"]
             # On met à jour l'info locale pour que la réponse du POST retourne le bon nom
             info = demo_data["profile"]["info"]
+            if job_key and profile_key:
+                try:
+                    await hrflow.create_tracking(job_key, profile_key)
+                except Exception as te:
+                    print(f"create_tracking failed (non-fatal): {te}", flush=True)
+
+            return {
+                "ok": True,
+                "profile_key": profile_key,
+                "name": f"{info.get('first_name', '')} {info.get('last_name', '')}".strip(),
+                "email": info.get("email", ""),
+            }
+            
+        content = await file.read()
+        result = await hrflow.parse_resume_file(content, file.filename)
+        profile = result.get("profile", result)
+        profile_key = profile.get("key")
+        info = profile.get("info", {})
 
         if job_key and profile_key:
             try:

@@ -393,7 +393,7 @@ export default function CandidatePanel({ candidateRef, job, onClose, onProcessin
 
   return (
     <>
-      <div style={s.overlay} className={closing ? 'anim-overlay-exit' : 'anim-overlay'} onClick={handleClose}>
+      <div style={s.overlay} className={closing ? 'anim-overlay-exit' : 'anim-overlay'}>
         <div style={s.drawer} className={closing ? 'anim-drawer-exit' : 'anim-drawer'} onClick={(e) => e.stopPropagation()}>
           {/* Header */}
           <div style={s.header}>
@@ -1193,6 +1193,19 @@ function EmailTab({ job, candidateRef }) {
   const [emailData, setEmailData] = useState({ subject: '', body: '', to: candidateRef.email || '' })
   const [guidelines, setGuidelines] = useState('')
 
+  const handleShortcut = (e) => {
+    // Alt + A (A pour Accepté)
+    if (e.altKey && e.key === 'a') {
+      e.preventDefault();
+      setGuidelines('Candidature acceptée');
+    }
+    // Optionnel : Alt + R (R pour Refus)
+    if (e.altKey && e.key === 'r') {
+      e.preventDefault();
+      setGuidelines('Refus poli de la candidature');
+    }
+  }
+
   const handleGenerate = async () => {
     setLoading(true)
     setError(null)
@@ -1239,6 +1252,7 @@ function EmailTab({ job, candidateRef }) {
             <textarea
               value={guidelines}
               onChange={(e) => setGuidelines(e.target.value)}
+              onKeyDown={handleShortcut}
               style={{ width: '100%', minHeight: 60, padding: '8px', border: '1px solid var(--border)', borderRadius: 'var(--radius)', fontSize: '.8rem', background: '#fff', resize: 'vertical' }}
               placeholder="Ex: 'Invitation à un entretien', 'Refus poli', 'Suivi technique'..."
             />
