@@ -5,8 +5,8 @@
 ## 🎥 Demo
 
 <p align="center">
-  <a href="./assets/Demo_HRevolution.mp4">
-    <img src="./assets/preview.png" width="700">
+  <a href="./HEpiR-HREvolution/assets/Demo_HRevolution.mp4">
+    <img src="./HEpiR-HREvolution/assets/preview.png" width="700">
   </a>
 </p>
 
