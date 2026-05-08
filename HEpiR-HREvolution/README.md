@@ -4,15 +4,7 @@
 
 ## 🎥 Demo
 
-<p align="center">
-  <a href="./assets/Demo_HRevolution.mp4">
-    <img src="./assets/preview.png" width="700">
-  </a>
-</p>
-
-<p align="center">
-  Click on the image to play the video
-</p>
+![Demo](assets/preview_demo.gif)
 
 ## What it does
 
