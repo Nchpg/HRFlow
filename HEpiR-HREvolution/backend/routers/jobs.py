@@ -66,7 +66,15 @@ async def get_init_data():
         profiles_task = hrflow.list_all_profiles(limit=300) # Get last 300 profiles with tags
         
         jobs, trackings, profiles = await asyncio.gather(jobs_task, trackings_task, profiles_task)
-        
+
+        # Profiles referenced by a tracking can be older than the bulk-load window
+        # (last 300): fetch those individually so candidates never render nameless.
+        loaded_keys = {p["key"] for p in profiles if p.get("key")}
+        tracked_keys = {t.get("profile_key") or (t.get("profile") or {}).get("key") for t in trackings}
+        missing = [k for k in tracked_keys if k and k not in loaded_keys]
+        if missing:
+            profiles += await hrflow._gather_limited([hrflow.get_profile(k) for k in missing])
+
         # Populate candidate list cache in background
         # We can reconstruct what get_job_candidates would return
         profiles_map = {p["key"]: p for p in profiles if p.get("key")}
@@ -138,7 +146,7 @@ async def debug_raw_jobs():
     import httpx as _httpx
     async with _httpx.AsyncClient() as client:
         r = await client.get(
-            "https://api.hrflow.ai/v1/jobs/searching",
+            "https://api.hrflow.ai/v1/storing/jobs",
             headers={"X-API-KEY": settings.hrflow_api_key, "X-USER-EMAIL": settings.hrflow_user_email},
             params={"board_keys": f'["{settings.hrflow_board_key}"]', "limit": 5},
             timeout=15,
@@ -339,12 +347,7 @@ async def get_job_candidates(job_key: str):
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
 
-    candidates = []
-    for tracking in trackings:
-        profile_key = tracking.get("profile_key") or tracking.get("profile", {}).get("key")
-        if not profile_key:
-            continue
-
+    async def build_candidate(tracking: dict, profile_key: str) -> dict:
         base_score = None
         ai_adjustment = 0.0
         bonus = 0.0
@@ -354,7 +357,7 @@ async def get_job_candidates(job_key: str):
         try:
             profile = await hrflow.get_profile(profile_key)
             info = profile.get("info", {})
-            
+
             # Extract score data
             score_tag = hrflow.extract_tag(profile, f"job_data_{job_key}")
             if score_tag:
@@ -364,7 +367,7 @@ async def get_job_candidates(job_key: str):
                     ai_adjustment = tag_data.get("ai_adjustment", 0.0)
                     bonus = tag_data.get("bonus", 0.0)
                 except: pass
-            
+
             # Extract stage data
             stage_tag = hrflow.extract_tag(profile, f"stage_{job_key}")
             if stage_tag:
@@ -378,27 +381,32 @@ async def get_job_candidates(job_key: str):
                 stage = tracking.get("stage") or "applied"
 
         except Exception:
-            profile = {}
             info = tracking.get("profile", {}).get("info", {})
 
         score = (base_score + ai_adjustment) if base_score is not None else None
 
-        candidates.append(
-            {
-                "profile_key": profile_key,
-                "first_name": info.get("first_name", ""),
-                "last_name": info.get("last_name", ""),
-                "email": info.get("email", ""),
-                "picture": info.get("picture", ""),
-                "base_score": base_score,
-                "ai_adjustment": ai_adjustment,
-                "score": score,
-                "bonus": bonus,
-                "stage": stage,
-                "stage_updated_at": stage_updated_at,
-                "tracking_key": tracking.get("key", ""),
-            }
-        )
+        return {
+            "profile_key": profile_key,
+            "first_name": info.get("first_name", ""),
+            "last_name": info.get("last_name", ""),
+            "email": info.get("email", ""),
+            "picture": info.get("picture", ""),
+            "base_score": base_score,
+            "ai_adjustment": ai_adjustment,
+            "score": score,
+            "bonus": bonus,
+            "stage": stage,
+            "stage_updated_at": stage_updated_at,
+            "tracking_key": tracking.get("key", ""),
+        }
+
+    candidates = await hrflow._gather_limited(
+        [
+            build_candidate(t, pk)
+            for t in trackings
+            if (pk := t.get("profile_key") or t.get("profile", {}).get("key"))
+        ]
+    )
 
     # Sort: scored candidates first (desc), unscored last
     candidates.sort(key=lambda c: (c["score"] is not None, c["score"] or 0), reverse=True)

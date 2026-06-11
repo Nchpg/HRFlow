@@ -1,5 +1,6 @@
 """Wrapper around the HRFlow REST API."""
 
+import asyncio
 import logging
 import httpx
 from config import settings
@@ -35,39 +36,60 @@ def _headers() -> dict:
 # Jobs
 # ---------------------------------------------------------------------------
 
-async def list_jobs(limit: int = 30, page: int = 1, use_cache: bool = True) -> list[dict]:
-    """Return jobs from the configured board using the searching endpoint."""
+# Max parallel calls against /job/indexing and /profile/indexing
+_INDEXING_CONCURRENCY = 10
+
+
+async def _storing_list(kind: str, container_param: str, container_key: str) -> list[dict]:
+    """Enumerate all non-archived items (key + dates only) via the free storing endpoint."""
+    items: list[dict] = []
+    page = 1
     async with httpx.AsyncClient() as client:
-        r = await client.get(
-            f"{BASE_URL}/jobs/searching",
-            headers=_headers(),
-            params={
-                "board_keys": f'["{settings.hrflow_board_key}"]',
-                "query": "",
-                "limit": limit,
-                "page": page,
-            },
-            timeout=15,
-        )
-        r.raise_for_status()
-        data = r.json()
-        jobs = (data.get("data") or {}).get("jobs", [])
-        # Enrich with status from tags
-        for job in jobs:
-            status_tag = extract_tag(job, "job_status")
-            if status_tag:
-                import json
-                try:
-                    s_data = json.loads(status_tag)
-                    job["status"] = s_data.get("status", "open")
-                    job["status_updated_at"] = s_data.get("updated_at")
-                except:
-                    job["status"] = "open"
-            else:
-                job["status"] = "open"
-        
-        print(f"HRFlow list_jobs → total={data.get('meta', {}).get('total')} returned={len(jobs)}", flush=True)
-        return jobs
+        while True:
+            r = await client.get(
+                f"{BASE_URL}/storing/{kind}",
+                headers=_headers(),
+                params={container_param: f'["{container_key}"]', "limit": 100, "page": page},
+                timeout=15,
+            )
+            r.raise_for_status()
+            data = r.json()
+            items.extend(it for it in (data.get("data") or []) if not it.get("archived_at"))
+            if page >= ((data.get("meta") or {}).get("maxPage") or 1):
+                return items
+            page += 1
+
+
+async def _gather_limited(coros: list) -> list:
+    """Run coroutines in parallel, capped at _INDEXING_CONCURRENCY; drop failures."""
+    sem = asyncio.Semaphore(_INDEXING_CONCURRENCY)
+
+    async def _run(coro):
+        async with sem:
+            try:
+                return await coro
+            except Exception as e:
+                print(f"indexing fetch failed (non-fatal): {e}", flush=True)
+                return None
+
+    results = await asyncio.gather(*[_run(c) for c in coros])
+    return [r for r in results if r]
+
+
+async def list_jobs(limit: int | None = None, page: int = 1, use_cache: bool = True) -> list[dict]:
+    """Return all jobs from the configured board (storing for keys + indexing for content).
+
+    By default every job is returned; pass `limit` to paginate.
+    """
+    stubs = await _storing_list("jobs", "board_keys", settings.hrflow_board_key)
+    # Most recent first, like the old searching default ordering
+    stubs.sort(key=lambda s: s.get("created_at") or "", reverse=True)
+    total = len(stubs)
+    if limit:
+        stubs = stubs[(page - 1) * limit: page * limit]
+    jobs = await _gather_limited([get_job(s["key"]) for s in stubs if s.get("key")])
+    print(f"HRFlow list_jobs → total={total} returned={len(jobs)}", flush=True)
+    return jobs
 
 
 async def get_job(job_key: str) -> dict:
@@ -166,36 +188,42 @@ async def patch_profile_tags(profile_key: str, tags: list[dict]) -> dict:
 # ---------------------------------------------------------------------------
 
 async def list_trackings(job_key: str) -> list[dict]:
-    """Return all trackings for a given job. Returns [] when none exist."""
+    """Return all trackings for a given job (paginated). Returns [] when none exist."""
+    trackings: list[dict] = []
+    page = 1
     async with httpx.AsyncClient() as client:
-        r = await client.get(
-            f"{BASE_URL}/trackings",
-            headers=_headers(),
-            params={
-                "role": "candidate",
-                "board_key": settings.hrflow_board_key,
-                "job_key": job_key,
-                "source_keys": f'["{settings.hrflow_source_key}"]',
-                "limit": 100,
-            },
-            timeout=15,
-        )
-        if r.status_code == 404:
-            return []
-        if not r.is_success:
-            print(f"list_trackings {job_key} → {r.status_code}: {r.text}", flush=True)
-            return []
-        data = r.json()
-        
-        # Normalize the response structure
-        # The new endpoint returns the list in 'data' directly.
-        # The old endpoint returned it in 'data.trackings'.
-        data_content = data.get("data")
-        if isinstance(data_content, list):
-            return data_content
-        if isinstance(data_content, dict):
-            return data_content.get("trackings") or []
-        return []
+        while True:
+            r = await client.get(
+                f"{BASE_URL}/trackings",
+                headers=_headers(),
+                params={
+                    "role": "candidate",
+                    "board_key": settings.hrflow_board_key,
+                    "job_key": job_key,
+                    "source_keys": f'["{settings.hrflow_source_key}"]',
+                    "limit": 100,
+                    "page": page,
+                },
+                timeout=15,
+            )
+            if r.status_code == 404:
+                return trackings
+            if not r.is_success:
+                print(f"list_trackings {job_key} → {r.status_code}: {r.text}", flush=True)
+                return trackings
+            data = r.json()
+
+            # Normalize the response structure
+            # The new endpoint returns the list in 'data' directly.
+            # The old endpoint returned it in 'data.trackings'.
+            data_content = data.get("data")
+            if isinstance(data_content, list):
+                trackings.extend(data_content)
+            elif isinstance(data_content, dict):
+                trackings.extend(data_content.get("trackings") or [])
+            if page >= ((data.get("meta") or {}).get("maxPage") or 1):
+                return trackings
+            page += 1
 
 
 async def get_tracking(job_key: str, profile_key: str) -> dict | None:
@@ -210,37 +238,47 @@ async def get_tracking(job_key: str, profile_key: str) -> dict | None:
 
 
 async def list_all_trackings() -> list[dict]:
-    """Return all trackings across all jobs in the configured board."""
-    import asyncio
-    jobs = await list_jobs()
-    job_keys = [j["key"] for j in jobs if j.get("key")]
-    results = await asyncio.gather(*[list_trackings(jk) for jk in job_keys], return_exceptions=True)
-    all_trackings = []
-    for r in results:
-        if isinstance(r, list):
-            all_trackings.extend(r)
-    return all_trackings
+    """Return all trackings of the configured board in one global call (job_key is optional)."""
+    all_trackings: list[dict] = []
+    page = 1
+    async with httpx.AsyncClient() as client:
+        while True:
+            r = await client.get(
+                f"{BASE_URL}/trackings",
+                headers=_headers(),
+                params={
+                    "role": "candidate",
+                    "board_keys": f'["{settings.hrflow_board_key}"]',
+                    "source_keys": f'["{settings.hrflow_source_key}"]',
+                    "limit": 100,
+                    "page": page,
+                },
+                timeout=15,
+            )
+            if not r.is_success:
+                print(f"list_all_trackings → {r.status_code}: {r.text}", flush=True)
+                return all_trackings
+            data = r.json()
+            data_content = data.get("data")
+            if isinstance(data_content, list):
+                all_trackings.extend(data_content)
+            elif isinstance(data_content, dict):
+                all_trackings.extend(data_content.get("trackings") or [])
+            if page >= ((data.get("meta") or {}).get("maxPage") or 1):
+                return all_trackings
+            page += 1
 
 
 async def list_all_profiles(limit: int = 100) -> list[dict]:
-    """Return profiles from the configured source."""
-    async with httpx.AsyncClient() as client:
-        r = await client.get(
-            f"{BASE_URL}/profiles/searching",
-            headers=_headers(),
-            params={
-                "source_keys": f'["{settings.hrflow_source_key}"]',
-                "query": "",
-                "limit": limit,
-                "page": 1,
-            },
-            timeout=20,
-        )
-        if not r.is_success:
-            print(f"list_all_profiles → {r.status_code}: {r.text}", flush=True)
-            return []
-        data = r.json()
-        return (data.get("data") or {}).get("profiles", [])
+    """Return profiles from the configured source (storing for keys + indexing for content)."""
+    try:
+        stubs = await _storing_list("profiles", "source_keys", settings.hrflow_source_key)
+    except Exception as e:
+        print(f"list_all_profiles → {e}", flush=True)
+        return []
+    # Most recent first, then cap to `limit` (old behavior: last N profiles)
+    stubs.sort(key=lambda s: s.get("created_at") or "", reverse=True)
+    return await _gather_limited([get_profile(s["key"]) for s in stubs[:limit] if s.get("key")])
 
 
 # ---------------------------------------------------------------------------

@@ -26,9 +26,12 @@ X-USER-EMAIL: <HRFLOW_USER_EMAIL>
 
 | Action | Method | Endpoint |
 |--------|--------|----------|
-| List jobs | `GET` | `/v1/jobs/searching?board_keys=["{key}"]&query=&limit=30` |
+| List job keys | `GET` | `/v1/storing/jobs?board_keys=["{key}"]&limit=100` (free; keys + dates only) |
 | Get single job | `GET` | `/v1/job/indexing?board_key={key}&key={job_key}` |
 | Create job | `POST` | `/v1/job/indexing` |
+
+> Listing = `/storing/jobs` to enumerate keys, then parallel `/job/indexing` calls for content.
+> The paid `/jobs/searching` endpoint is no longer used.
 
 **Create job payload:**
 ```json
@@ -45,7 +48,7 @@ X-USER-EMAIL: <HRFLOW_USER_EMAIL>
 }
 ```
 
-> `query=""` is required by `/jobs/searching` to return all results (omitting it returns 0 results).
+> Historical note: when `/jobs/searching` was used, `query=""` was required to return all results.
 
 ---
 
@@ -53,6 +56,7 @@ X-USER-EMAIL: <HRFLOW_USER_EMAIL>
 
 | Action | Method | Endpoint |
 |--------|--------|----------|
+| List profile keys | `GET` | `/v1/storing/profiles?source_keys=["{key}"]&limit=100` (free; keys + dates only) |
 | Get profile | `GET` | `/v1/profile/indexing?source_key={key}&key={profile_key}` |
 | Parse resume | `POST` | `/v1/profile/parsing/file` (multipart) |
 | Update profile tags / metadatas | `PUT` | `/v1/profile/indexing` |
@@ -214,7 +218,7 @@ CandidatePanel (frontend) — two-phase flow:
 
 | Issue | Cause | Fix applied |
 |-------|-------|-------------|
-| `GET /jobs/searching` returns 0 results | Missing `query=""` param | Added `"query": ""` to params |
+| `GET /jobs/searching` returns 0 results | Missing `query=""` param | Obsolete — searching replaced by free `/storing/*` + `/indexing` calls |
 | `PUT /profile/indexing` returns 400 | Missing required profile fields | Full profile fetched first, all mutable fields included |
 | `PATCH /profile/indexing` returns 405 | Method not supported | Changed to `PUT` |
 | `POST /tracking` requires `role` field | Missing `role` causes 400 | Added `"role": "candidate"` |
